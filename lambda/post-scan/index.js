@@ -1,0 +1,161 @@
+import {
+  GetObjectTaggingCommand,
+  HeadObjectCommand,
+  PutObjectTaggingCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
+import { SendMessageCommand, SQSClient } from '@aws-sdk/client-sqs';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+
+const s3 = new S3Client({});
+const sqs = new SQSClient({});
+const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const {
+  ORIGINAL_BUCKET_NAME,
+  TABLE_NAME,
+  VARIANT_CANDIDATE_QUEUE_URL,
+  RESIZE_THRESHOLD_BYTES = '0',
+} = process.env;
+
+function decodeS3Key(key) {
+  return decodeURIComponent(String(key || '').replace(/\+/g, ' '));
+}
+function imageIdFromKey(key) {
+  const parts = key.split('/');
+  return parts[0] === 'uploads' && parts[1] ? parts[1] : key;
+}
+function toSecurityStatus(scanResult) {
+  if (scanResult === 'NO_THREATS_FOUND') return 'CLEAN';
+  if (scanResult === 'THREATS_FOUND') return 'MALICIOUS';
+  return 'UNVERIFIED';
+}
+function toPipelineStatus(securityStatus, scanStatus) {
+  if (securityStatus === 'MALICIOUS') return 'BLOCKED';
+  if (securityStatus === 'CLEAN') return 'SCANNED';
+  if (scanStatus === 'FAILED') return 'SCAN_FAILED';
+  if (scanStatus === 'SKIPPED') return 'SCAN_SKIPPED';
+  return 'SCAN_UNKNOWN';
+}
+function mergeTags(existingTagSet, nextTags) {
+  const map = new Map(
+    (existingTagSet || []).map((tag) => [tag.Key, tag.Value]),
+  );
+  for (const [key, value] of Object.entries(nextTags))
+    map.set(key, String(value).slice(0, 256));
+  const preferred = [
+    'GuardDutyMalwareScanStatus',
+    'upload-status',
+    'scan-result',
+    'variant-required',
+    'size-category',
+    'processed-status',
+    'webp-status',
+    'expires-at-epoch',
+    'retention-seconds',
+  ];
+  const result = [];
+  for (const key of preferred)
+    if (map.has(key) && result.length < 10)
+      result.push({ Key: key, Value: map.get(key) });
+  for (const [key, value] of map.entries())
+    if (!preferred.includes(key) && result.length < 10)
+      result.push({ Key: key, Value: value });
+  return result;
+}
+
+export async function handler(event) {
+  console.log('GuardDuty scan event:', JSON.stringify(event));
+  const detail = event.detail || {};
+  const objectDetails = detail.s3ObjectDetails || {};
+  const scanDetails = detail.scanResultDetails || {};
+  const bucket = objectDetails.bucketName || ORIGINAL_BUCKET_NAME;
+  const key = decodeS3Key(objectDetails.objectKey);
+  const versionId = objectDetails.versionId;
+  const scanStatus = detail.scanStatus || 'UNKNOWN';
+  const scanResult = scanDetails.scanResultStatus || 'UNKNOWN';
+  if (!key || bucket !== ORIGINAL_BUCKET_NAME) return;
+
+  const versionArgs = versionId ? { VersionId: versionId } : {};
+  const imageId = imageIdFromKey(key);
+  const now = new Date().toISOString();
+  const head = await s3.send(
+    new HeadObjectCommand({ Bucket: bucket, Key: key, ...versionArgs }),
+  );
+  const sizeBytes = Number(head.ContentLength || 0);
+  const contentType = head.ContentType || 'application/octet-stream';
+  const securityStatus = toSecurityStatus(scanResult);
+  const sizeCategory =
+    sizeBytes >= Number(RESIZE_THRESHOLD_BYTES) ? 'LARGE' : 'SMALL';
+  const variantRequired =
+    securityStatus === 'CLEAN' &&
+    sizeBytes >= Number(RESIZE_THRESHOLD_BYTES) &&
+    contentType.startsWith('image/');
+  const pipelineStatus = toPipelineStatus(securityStatus, scanStatus);
+
+  const existingTags = await s3.send(
+    new GetObjectTaggingCommand({ Bucket: bucket, Key: key, ...versionArgs }),
+  );
+  await s3.send(
+    new PutObjectTaggingCommand({
+      Bucket: bucket,
+      Key: key,
+      ...versionArgs,
+      Tagging: {
+        TagSet: mergeTags(existingTags.TagSet, {
+          'scan-result': securityStatus,
+          'variant-required': variantRequired ? 'TRUE' : 'FALSE',
+          'size-category': sizeCategory,
+          'processed-status': pipelineStatus,
+        }),
+      },
+    }),
+  );
+
+  await ddb.send(
+    new UpdateCommand({
+      TableName: TABLE_NAME,
+      Key: { imageId },
+      UpdateExpression:
+        'SET #status = :status, scanStatus = :scanStatus, scanResult = :scanResult, securityStatus = :securityStatus, sizeBytes = :sizeBytes, sizeCategory = :sizeCategory, variantRequired = :variantRequired, contentType = :contentType, threats = :threats, statusReasons = :statusReasons, scannedAt = :scannedAt, updatedAt = :updatedAt, originalBucket = :bucket, originalKey = :key, originalVersionId = if_not_exists(originalVersionId, :versionId)',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: {
+        ':status': pipelineStatus,
+        ':scanStatus': scanStatus,
+        ':scanResult': scanResult,
+        ':securityStatus': securityStatus,
+        ':sizeBytes': sizeBytes,
+        ':sizeCategory': sizeCategory,
+        ':variantRequired': variantRequired,
+        ':contentType': contentType,
+        ':threats': scanDetails.threats || null,
+        ':statusReasons': scanDetails.statusReasons || null,
+        ':scannedAt': now,
+        ':updatedAt': now,
+        ':bucket': bucket,
+        ':key': key,
+        ':versionId': versionId || null,
+      },
+    }),
+  );
+
+  await sqs.send(
+    new SendMessageCommand({
+      QueueUrl: VARIANT_CANDIDATE_QUEUE_URL,
+      MessageBody: JSON.stringify({
+        imageId,
+        bucket,
+        key,
+        versionId: versionId || '',
+        scanStatus,
+        scanResult,
+        securityStatus,
+        sizeBytes,
+        sizeCategory,
+        variantRequired,
+        contentType,
+        updatedAt: now,
+      }),
+    }),
+  );
+}

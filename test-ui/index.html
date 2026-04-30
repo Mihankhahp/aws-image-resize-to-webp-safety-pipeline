@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AWS Image Pipeline WebP Test UI</title>
+    <style>
+      /*
+      Teaching note:
+      This UI is intentionally dependency-free. It can be served by any static
+      file server and talks directly to the API Gateway endpoints created by CDK.
+    */
+      :root {
+        font-family:
+          Inter,
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          sans-serif;
+        color: #e9f1ff;
+        background: #08111f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background:
+          radial-gradient(circle at top left, #26447a55, transparent 35%),
+          #08111f;
+      }
+
+      .wrap {
+        max-width: 1180px;
+        margin: auto;
+        padding: 28px;
+        min-width: 0;
+      }
+
+      .card {
+        background: #101c31;
+        border: 1px solid #ffffff14;
+        border-radius: 18px;
+        padding: 18px;
+        margin: 16px 0;
+        box-shadow: 0 18px 40px #0005;
+        min-width: 0;
+      }
+
+      h1 {
+        font-size: 2.3rem;
+        margin: 0.2rem 0;
+      }
+
+      h2 {
+        margin-top: 0;
+      }
+
+      .muted {
+        color: #9fb2d4;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        min-width: 0;
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        min-width: 0;
+      }
+
+      .metric {
+        background: #ffffff08;
+        border-radius: 14px;
+        padding: 14px;
+        min-width: 0;
+      }
+
+      .metric b {
+        display: block;
+        font-size: 1.25rem;
+        margin-top: 8px;
+        overflow-wrap: anywhere;
+      }
+
+      input,
+      button {
+        border-radius: 12px;
+        border: 1px solid #ffffff22;
+        padding: 12px;
+        background: #0b1628;
+        color: #e9f1ff;
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+        background: #477cff;
+        border: 0;
+        font-weight: 700;
+      }
+
+      .secondary {
+        background: #ffffff12;
+      }
+
+      .progress {
+        height: 10px;
+        background: #ffffff12;
+        border-radius: 99px;
+        overflow: hidden;
+      }
+
+      .bar {
+        height: 100%;
+        width: 0;
+        background: linear-gradient(90deg, #477cff, #3ed7b4);
+        transition: width 0.2s;
+      }
+
+      .timeline {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .step {
+        padding: 12px;
+        border-radius: 14px;
+        background: #ffffff08;
+        color: #9fb2d4;
+      }
+
+      .step.active {
+        outline: 2px solid #477cff;
+        color: #fff;
+      }
+
+      .step.done {
+        outline: 2px solid #3ed7b4;
+        color: #fff;
+      }
+
+      .preview {
+        max-width: 100%;
+        max-height: 420px;
+        border-radius: 14px;
+        background: #ffffff08;
+      }
+
+      /*
+      Diagnostics section:
+      The logs/status area now sits above the raw event window. The event window
+      gets its own constrained panel so long JSON fields, especially signed URLs,
+      scroll inside the panel instead of expanding the whole page.
+    */
+      .diagnostics {
+        width: min(100%, 960px);
+        margin: 16px auto;
+      }
+
+      .status-strip {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+
+      .status-pill {
+        background: #ffffff08;
+        border: 1px solid #ffffff12;
+        border-radius: 14px;
+        padding: 12px;
+        min-width: 0;
+      }
+
+      .status-pill b {
+        display: block;
+        margin-top: 6px;
+        overflow-wrap: anywhere;
+      }
+
+      .logs {
+        display: flex;
+        flex-direction: column-reverse;
+        gap: 8px;
+        max-height: 220px;
+        overflow: auto;
+        padding-right: 4px;
+        margin-bottom: 18px;
+      }
+
+      .log {
+        padding: 10px 12px;
+        border: 1px solid #ffffff12;
+        border-radius: 12px;
+        background: #ffffff08;
+        animation: in 0.25s ease;
+      }
+
+      .event-window {
+        width: 100%;
+        max-width: 100%;
+        max-height: 420px;
+        overflow: auto;
+        border-radius: 12px;
+        border: 1px solid #ffffff12;
+        background: #ffffff08;
+      }
+
+      .event-window pre {
+        /*
+        Keep JSON formatting intact. Horizontal scrolling is preferred here
+        because wrapped presigned URLs are hard to read while debugging.
+      */
+        width: max-content;
+        min-width: 100%;
+        margin: 0;
+        padding: 14px;
+        white-space: pre;
+        font-size: 0.9rem;
+        line-height: 1.45;
+        background: transparent;
+      }
+
+      .ok {
+        color: #3ed7b4;
+      }
+      .bad {
+        color: #ff7b91;
+      }
+      .warn {
+        color: #ffd166;
+      }
+
+      @keyframes in {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+
+      @media (max-width: 900px) {
+        .grid,
+        .metrics,
+        .timeline,
+        .status-strip {
+          grid-template-columns: 1fr;
+        }
+
+        .wrap {
+          padding: 18px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <p class="muted">Test Console</p>
+      <h1>AWS Image Pipeline WebP Test UI</h1>
+      <p class="muted">
+        Upload an image, poll status, and compare the safe original copy with
+        the generated WebP file.
+      </p>
+
+      <div class="card">
+        <h2>Upload</h2>
+        <label class="muted" for="endpoint">Upload URL endpoint</label><br />
+        <input
+          id="endpoint"
+          style="width: 100%"
+          value="https://0252bbfkk7.execute-api.us-east-2.amazonaws.com/v1/upload-url"
+        /><br /><br />
+        <input id="file" type="file" accept="image/*" />
+        <button id="start">Upload &amp; Test</button>
+        <button id="reset" class="secondary">Reset</button>
+        <p id="fileMeta" class="muted">No file selected</p>
+        <div class="progress"><div id="bar" class="bar"></div></div>
+        <p id="progress" class="muted">0%</p>
+      </div>
+
+      <div class="card">
+        <h2>Timeline</h2>
+        <div class="timeline" id="timeline">
+          <div class="step" data-s="PRESIGNED">Presigned</div>
+          <div class="step" data-s="UPLOADED">Uploaded</div>
+          <div class="step" data-s="SCANNED">Scanned</div>
+          <div class="step" data-s="WEBP_CREATED">WebP Ready</div>
+        </div>
+        <p id="message" class="muted">Waiting.</p>
+      </div>
+
+      <div class="metrics">
+        <div class="metric">Image ID<b id="imageId">—</b></div>
+        <div class="metric">Uploaded size<b id="uploadSize">—</b></div>
+        <div class="metric">Safe original<b id="safeSize">—</b></div>
+        <div class="metric">
+          WebP size<b id="webpSize">—</b
+          ><span id="saving" class="muted">—</span>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <h2>Local Preview</h2>
+          <img id="local" class="preview" alt="Selected local upload preview" />
+          <p id="localMeta" class="muted">—</p>
+        </div>
+        <div class="card">
+          <h2>WebP Preview</h2>
+          <img id="webp" class="preview" alt="Generated WebP preview" />
+          <p>
+            <a id="originalLink" target="_blank" rel="noopener"
+              >Open safe original</a
+            >
+            · <a id="webpLink" target="_blank" rel="noopener">Open WebP</a>
+          </p>
+        </div>
+      </div>
+
+      <div class="card diagnostics">
+        <h2>Status &amp; Logging</h2>
+        <p class="muted">
+          This section is intentionally above the raw event window so students
+          can first read the human-friendly status, then inspect the full API
+          event payload below.
+        </p>
+        <div class="status-strip">
+          <div class="status-pill">
+            Current status<b id="currentStatus">Waiting</b>
+          </div>
+          <div class="status-pill">Last update<b id="lastUpdate">—</b></div>
+        </div>
+        <div id="logs" class="logs" aria-live="polite"></div>
+
+        <h2>Event Window</h2>
+        <p class="muted">
+          The event payload is width-constrained. Scroll horizontally for long
+          values such as signed URLs, and vertically for large responses.
+        </p>
+        <div class="event-window">
+          <pre id="raw">No status yet.</pre>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      // Small DOM helper. Example: $('file') returns document.getElementById('file').
+      const $ = (id) => document.getElementById(id);
+
+      let file;
+      let objectUrl;
+      let pollTimer;
+
+      // These states end the polling loop. Some are success paths, others are failure
+      // or teaching/demo states that should not be polled forever.
+      const terminal = new Set([
+        'WEBP_CREATED',
+        'BLOCKED',
+        'SCAN_FAILED',
+        'SCAN_SKIPPED',
+      ]);
+
+      function bytes(n) {
+        if (n == null) return '—';
+        const units = ['B', 'KB', 'MB', 'GB'];
+        let i = 0;
+        while (n >= 1024 && i < units.length - 1) {
+          n /= 1024;
+          i++;
+        }
+        return `${n.toFixed(i ? 1 : 0)} ${units[i]}`;
+      }
+
+      function setStatus(status) {
+        const timestamp = new Date().toLocaleTimeString();
+        $('currentStatus').textContent = status;
+        $('lastUpdate').textContent = timestamp;
+        $('message').textContent = status;
+      }
+
+      function log(message, className = '') {
+        const item = document.createElement('div');
+        item.className = `log ${className}`;
+        item.textContent = `${new Date().toLocaleTimeString()}  ${message}`;
+        $('logs').appendChild(item);
+      }
+
+      function timeline(status) {
+        const order = ['PRESIGNED', 'UPLOADED', 'SCANNED', 'WEBP_CREATED'];
+        let currentIndex = order.indexOf(status);
+
+        // Failure-like statuses occur after the scan step in this pipeline, so the UI
+        // highlights the scan step instead of leaving the timeline blank.
+        if (['BLOCKED', 'SCAN_FAILED', 'SCAN_SKIPPED'].includes(status)) {
+          currentIndex = 2;
+        }
+
+        document.querySelectorAll('.step').forEach((element, index) => {
+          element.className = `step ${index < currentIndex ? 'done' : index === currentIndex ? 'active' : ''}`;
+        });
+      }
+
+      function statusUrl() {
+        return $('endpoint')
+          .value.trim()
+          .replace(/\/upload-url$/, `/images/${window.imageId}`);
+      }
+
+      $('file').onchange = (event) => {
+        file = event.target.files[0];
+        if (!file) return;
+
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        objectUrl = URL.createObjectURL(file);
+
+        $('local').src = objectUrl;
+        $('fileMeta').textContent =
+          `${file.name} • ${file.type} • ${bytes(file.size)}`;
+        $('uploadSize').textContent = bytes(file.size);
+        $('localMeta').textContent = `${file.name} • ${bytes(file.size)}`;
+        setStatus('File selected');
+        log('File selected.');
+      };
+
+      $('reset').onclick = () => location.reload();
+
+      async function xhrUpload(url) {
+        return new Promise((resolve, reject) => {
+          const request = new XMLHttpRequest();
+          request.open('PUT', url);
+          request.setRequestHeader('Content-Type', file.type);
+
+          request.upload.onprogress = (event) => {
+            if (!event.lengthComputable) return;
+            const percent = Math.round((event.loaded / event.total) * 100);
+            $('bar').style.width = `${percent}%`;
+            $('progress').textContent = `${percent}%`;
+          };
+
+          request.onload = () =>
+            request.status < 300
+              ? resolve()
+              : reject(new Error(`Upload failed ${request.status}`));
+
+          request.onerror = () => reject(new Error('Upload network error'));
+          request.send(file);
+        });
+      }
+
+      async function signedSize(url) {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        return { size: blob.size, url: URL.createObjectURL(blob) };
+      }
+
+      async function poll() {
+        const response = await fetch(statusUrl());
+        const status = await response.json();
+
+        $('raw').textContent = JSON.stringify(status, null, 2);
+        setStatus(status.status);
+        timeline(status.status);
+        log(
+          `Status: ${status.status}`,
+          status.status === 'WEBP_CREATED' ? 'ok' : '',
+        );
+
+        if (status.status === 'WEBP_CREATED') {
+          clearTimeout(pollTimer);
+
+          const safe = status.variants.original;
+          const webp = status.variants.webp;
+
+          $('originalLink').href = safe.downloadUrl;
+          $('webpLink').href = webp.downloadUrl;
+          $('safeSize').textContent = bytes(safe.sizeBytes);
+          $('webpSize').textContent = bytes(webp.sizeBytes);
+
+          if (file && webp.sizeBytes) {
+            const percent = (1 - webp.sizeBytes / file.size) * 100;
+            $('saving').textContent =
+              percent >= 0
+                ? `${percent.toFixed(1)}% smaller than upload`
+                : `${Math.abs(percent).toFixed(1)}% larger than upload`;
+          }
+
+          try {
+            const webpBlob = await signedSize(webp.downloadUrl);
+            $('webp').src = webpBlob.url;
+          } catch {
+            log(
+              'WebP preview could not be loaded from the signed URL.',
+              'warn',
+            );
+          }
+          return;
+        }
+
+        if (terminal.has(status.status)) {
+          clearTimeout(pollTimer);
+          log(
+            `Terminal status: ${status.status}`,
+            status.status === 'BLOCKED' ? 'bad' : 'warn',
+          );
+          return;
+        }
+
+        pollTimer = setTimeout(poll, 5000);
+      }
+
+      $('start').onclick = async () => {
+        try {
+          if (!file) throw new Error('Select a file first');
+
+          setStatus('Requesting presigned URL');
+          log('Requesting presigned URL.');
+
+          const body = JSON.stringify({
+            filename: file.name,
+            contentType: file.type,
+          });
+          const presigned = await fetch($('endpoint').value.trim(), {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body,
+          }).then((response) => response.json());
+
+          window.imageId = presigned.imageId;
+          $('imageId').textContent = presigned.imageId;
+          setStatus('PRESIGNED');
+          timeline('PRESIGNED');
+          log('Presigned URL created.', 'ok');
+
+          await xhrUpload(presigned.uploadUrl);
+          setStatus('UPLOADED');
+          timeline('UPLOADED');
+          log('Upload completed.', 'ok');
+
+          poll();
+        } catch (error) {
+          setStatus('Error');
+          log(error.message, 'bad');
+          alert(error.message);
+        }
+      };
+    </script>
+  </body>
+</html>

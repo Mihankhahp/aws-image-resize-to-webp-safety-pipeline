@@ -1,0 +1,35 @@
+flowchart LR
+  User[User / Browser]
+  API[API Gateway]
+  Presign[Presign Lambda]
+  Original[(Original S3 Bucket\n1-day lifecycle)]
+  UploadComplete[Upload Complete Lambda]
+  GD[GuardDuty Malware Protection for S3]
+  EB[EventBridge]
+  PostScan[Post-scan Lambda]
+  CandidateQ[(Variant Candidate SQS)]
+  Pipe[EventBridge Pipe Filter]
+  VariantQ[(Variant SQS)]
+  Webp[Create WebP Lambda]
+  Processed[(Processed S3 Bucket\n1-day lifecycle)]
+  LifecycleQ[(Lifecycle Expiration SQS)]
+  LifecycleStatus[Lifecycle Status Lambda]
+  DDB[(DynamoDB Images Table)]
+  Status[Status Lambda]
+
+  User -->|POST /upload-url| API --> Presign
+  Presign --> DDB
+  Presign -->|presigned PUT URL| User
+  User -->|PUT image| Original
+  Original -->|Object Created| EB --> UploadComplete --> DDB
+  Original --> GD -->|scan result| EB --> PostScan
+  PostScan --> Original
+  PostScan --> DDB
+  PostScan --> CandidateQ
+  CandidateQ --> Pipe --> VariantQ --> Webp
+  Webp --> Processed
+  Webp --> DDB
+  Original -->|Lifecycle Expiration| EB --> LifecycleQ --> LifecycleStatus --> DDB
+  Processed -->|Lifecycle Expiration| EB --> LifecycleQ
+  User -->|GET /images/{imageId}| API --> Status --> DDB
+  Status --> Processed

@@ -1,0 +1,30 @@
+{
+  "app": "node bin/app.js",
+  "context": {
+    "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
+    "resizeThresholdBytes": 0,
+    "webMaxWidth": 1280,
+    "webpQuality": 72,
+    "uploadUrlExpiresSeconds": 900,
+    "downloadUrlExpiresSeconds": 900,
+    "apiThrottleRateLimit": 10,
+    "apiThrottleBurstLimit": 20,
+    "objectRetentionDays": 1,
+    "presignTimeoutSeconds": 10,
+    "uploadCompleteTimeoutSeconds": 15,
+    "postScanTimeoutSeconds": 30,
+    "createWebpTimeoutSeconds": 60,
+    "createWebpMemorySize": 512,
+    "statusTimeoutSeconds": 10,
+    "lifecycleExpirationStatusTimeoutSeconds": 15,
+    "webpBatchSize": 1,
+    "webpMaxBatchingWindowSeconds": 5,
+    "webpMaxConcurrency": 2,
+    "lifecycleExpirationStatusBatchSize": 5,
+    "lifecycleExpirationStatusMaxBatchingWindowSeconds": 10,
+    "lifecycleExpirationStatusMaxConcurrency": 2,
+    "workQueueRetentionDays": 1,
+    "dlqRetentionDays": 4,
+    "queueMaxReceiveCount": 3
+  }
+}

@@ -1,0 +1,8 @@
+cdk.out/
+node_modules/
+.DS_Store
+.env
+*.log
+# Keep the Lambda asset node_modules in this repository because it contains Lambda Linux sharp binaries.
+!lambda/create-webp-variants/node_modules/
+!lambda/create-webp-variants/node_modules/**
