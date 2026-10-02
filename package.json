@@ -1,6 +1,6 @@
 {
   "name": "aws-image-resize-to-webp-safety-pipeline",
-  "version": "1.0.3",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "description": "AWS CDK serverless pipeline for secure image upload, malware scanning, WebP conversion, S3 lifecycle expiration, and DynamoDB status tracking.",
