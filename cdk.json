@@ -2,6 +2,7 @@
   "app": "node bin/app.js",
   "context": {
     "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
+    "deployTestUi": true,
     "resizeThresholdBytes": 0,
     "webMaxWidth": 1280,
     "webpQuality": 72,
