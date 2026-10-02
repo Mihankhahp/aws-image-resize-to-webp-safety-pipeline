@@ -1,9 +1,5 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import {
-  DynamoDBDocumentClient,
-  GetCommand,
-  UpdateCommand,
-} from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const {
@@ -54,22 +50,23 @@ function classifyObject(bucket, key) {
   return undefined;
 }
 
-function terminalStatusAfterExpiration(item, nextDeleted) {
+// `item` already includes this event's deletion (read back from the update).
+function terminalStatusAfterExpiration(item) {
   const hasSafeOriginal = Boolean(item.safeOriginalKey);
   const hasWebp = Boolean(item.webpKey);
   const hasProcessedArtifacts = hasSafeOriginal || hasWebp;
 
   const safeOriginalGone =
-    !hasSafeOriginal ||
-    Boolean(item.safeOriginalDeletedAt) ||
-    nextDeleted.safeOriginal;
-  const webpGone = !hasWebp || Boolean(item.webpDeletedAt) || nextDeleted.webp;
-  const originalGone = Boolean(item.originalDeletedAt) || nextDeleted.original;
+    !hasSafeOriginal || Boolean(item.safeOriginalDeletedAt);
+  const webpGone = !hasWebp || Boolean(item.webpDeletedAt);
+  const originalGone = Boolean(item.originalDeletedAt);
 
   if (hasProcessedArtifacts)
     return safeOriginalGone && webpGone ? 'ARTIFACTS_EXPIRED' : undefined;
   if (!originalGone) return undefined;
-  if (item.status === 'BLOCKED') return 'BLOCKED_EXPIRED';
+  // Duplicate lifecycle events must keep the status chosen the first time.
+  if (item.status === 'BLOCKED' || item.status === 'BLOCKED_EXPIRED')
+    return 'BLOCKED_EXPIRED';
   if (String(item.status || '').startsWith('SCAN_'))
     return 'SCAN_RESULT_EXPIRED';
   return 'EXPIRED';
@@ -117,31 +114,7 @@ async function updateImageStatus({
   nowIso,
   eventDetail,
 }) {
-  const existing = await ddb.send(
-    new GetCommand({
-      TableName: TABLE_NAME,
-      Key: { imageId },
-    }),
-  );
-
-  if (!existing.Item) {
-    console.warn('Lifecycle event did not match an image record.', {
-      imageId,
-      bucket,
-      key,
-    });
-    return { imageId, skipped: 'IMAGE_NOT_FOUND' };
-  }
-
-  const nextDeleted = {
-    original: artifactType === 'original',
-    safeOriginal: artifactType === 'safeOriginal',
-    webp: artifactType === 'webp',
-  };
-  const finalStatus = terminalStatusAfterExpiration(existing.Item, nextDeleted);
   const { setParts, values } = updatePiecesForArtifact(artifactType, nowIso);
-  const names = {};
-
   values[':lastExpiredBucket'] = bucket;
   values[':lastExpiredKey'] = key;
   values[':lastExpirationReason'] =
@@ -154,35 +127,80 @@ async function updateImageStatus({
     'lastDeletionType = :lastDeletionType',
   );
 
-  if (finalStatus) {
-    names['#status'] = 'status';
-    values[':finalStatus'] = finalStatus;
-    values[':retentionStatus'] = 'EXPIRED';
-    setParts.push(
-      '#status = :finalStatus',
-      'retentionStatus = :retentionStatus',
-      'expiredAt = :expiredAt',
+  // Record this deletion and read the result back in one atomic step.
+  // DynamoDB serializes updates to an item, so the last of several concurrent
+  // events for the same image sees every deletion and sets the final status.
+  let item;
+  try {
+    const result = await ddb.send(
+      new UpdateCommand({
+        TableName: TABLE_NAME,
+        Key: { imageId },
+        UpdateExpression: `SET ${setParts.join(', ')}`,
+        ConditionExpression: 'attribute_exists(imageId)',
+        ExpressionAttributeValues: values,
+        ReturnValues: 'ALL_NEW',
+      }),
     );
-  } else {
-    values[':retentionStatus'] = 'PARTIALLY_EXPIRED';
-    setParts.push('retentionStatus = :retentionStatus');
+    item = result.Attributes;
+  } catch (error) {
+    if (error.name !== 'ConditionalCheckFailedException') throw error;
+    console.warn('Lifecycle event did not match an image record.', {
+      imageId,
+      bucket,
+      key,
+    });
+    return { imageId, skipped: 'IMAGE_NOT_FOUND' };
   }
 
-  const updateInput = {
-    TableName: TABLE_NAME,
-    Key: { imageId },
-    UpdateExpression: `SET ${setParts.join(', ')}`,
-    ExpressionAttributeValues: values,
-  };
-  if (Object.keys(names).length > 0)
-    updateInput.ExpressionAttributeNames = names;
+  const finalStatus = terminalStatusAfterExpiration(item);
+  if (finalStatus) {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: TABLE_NAME,
+        Key: { imageId },
+        UpdateExpression:
+          'SET #status = :finalStatus, retentionStatus = :retentionStatus, expiredAt = if_not_exists(expiredAt, :expiredAt)',
+        ExpressionAttributeNames: { '#status': 'status' },
+        ExpressionAttributeValues: {
+          ':finalStatus': finalStatus,
+          ':retentionStatus': 'EXPIRED',
+          ':expiredAt': nowIso,
+        },
+      }),
+    );
+    return {
+      imageId,
+      artifactType,
+      status: finalStatus,
+      retentionStatus: 'EXPIRED',
+    };
+  }
 
-  await ddb.send(new UpdateCommand(updateInput));
+  // A concurrent event for the same image may already have marked the record
+  // EXPIRED; never downgrade it.
+  try {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: TABLE_NAME,
+        Key: { imageId },
+        UpdateExpression: 'SET retentionStatus = :retentionStatus',
+        ConditionExpression:
+          'attribute_not_exists(retentionStatus) OR retentionStatus <> :expired',
+        ExpressionAttributeValues: {
+          ':retentionStatus': 'PARTIALLY_EXPIRED',
+          ':expired': 'EXPIRED',
+        },
+      }),
+    );
+  } catch (error) {
+    if (error.name !== 'ConditionalCheckFailedException') throw error;
+  }
   return {
     imageId,
     artifactType,
-    status: finalStatus || existing.Item.status,
-    retentionStatus: values[':retentionStatus'],
+    status: item.status,
+    retentionStatus: 'PARTIALLY_EXPIRED',
   };
 }
 
