@@ -3,12 +3,16 @@
   "version": "1.0.3",
   "private": true,
   "type": "module",
-  "description": "AWS CDK serverless pipeline for secure image upload, malware scanning, WebP conversion, TTL cleanup, and DynamoDB status tracking.",
+  "description": "AWS CDK serverless pipeline for secure image upload, malware scanning, WebP conversion, S3 lifecycle expiration, and DynamoDB status tracking.",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
     "check": "node scripts/check-syntax.cjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "node test/pipeline.test.mjs",
+    "test:ui": "node test/ui.test.mjs",
     "synth": "cdk synth",
     "deploy": "cdk deploy",
     "destroy": "cdk destroy"
@@ -24,6 +28,10 @@
     "esbuild": "^0.28.0"
   },
   "devDependencies": {
-    "aws-cdk": "^2.1029.0"
+    "aws-cdk": "^2.1029.0",
+    "aws-icons": "3.3.0",
+    "playwright-core": "^1.63.0",
+    "prettier": "^3.9.9",
+    "sharp": "0.33.5"
   }
 }

@@ -1,0 +1,6 @@
+cdk.out/
+node_modules/
+lambda/create-webp-variants/node_modules/
+test/output/
+package-lock.json
+*.md
