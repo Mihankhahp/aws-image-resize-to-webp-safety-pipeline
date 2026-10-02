@@ -12,7 +12,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "node test/pipeline.test.mjs",
-    "test:ui": "node test/ui.test.mjs",
+    "test:ui": "node test/ui.test.mjs",
+    "diagram": "node docs/diagram/build.mjs",
     "synth": "cdk synth",
     "deploy": "cdk deploy",
     "destroy": "cdk destroy"
