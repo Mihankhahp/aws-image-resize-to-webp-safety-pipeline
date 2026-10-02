@@ -64,7 +64,7 @@ S3 tag writes replace the whole tag set and have no conditional form, so concurr
 ### Lambda bundling quirks
 
 - Handlers are written as ESM but bundled by `NodejsFunction`/esbuild to **CommonJS**. Because the root `package.json` has `"type": "module"`, the `afterBundling` hook runs `scripts/write-commonjs-package.cjs` to drop a `{"type":"commonjs"}` package.json into each asset; without it Lambda crashes on `module.exports`.
-- `sharp` is external for the WebP function; `scripts/install-lambda-sharp.cjs` installs `sharp@0.33.5` for linux/x64/glibc into the asset at synth time (has a Windows `cmd.exe` code path). Keep the version in sync with `lambda/create-webp-variants/package.json`. Functions are x86_64 to match. The install runs with `--package-lock=false`, so sharp's transitive deps float and `cdk diff` can report the WebP function's code as changed even when no source changed.
+- `sharp` is external for the WebP function; `scripts/install-lambda-sharp.cjs` installs `sharp@0.35.5` for linux/x64/glibc into the asset at synth time (has a Windows `cmd.exe` code path). Keep the version in sync with `lambda/create-webp-variants/package.json`. Functions are x86_64 to match. The install runs with `--package-lock=false`, so sharp's transitive deps float and `cdk diff` can report the WebP function's code as changed even when no source changed.
 - Four handlers use the AWS SDK v3 shipped in the Lambda Node.js 22 runtime (CDK's default `@aws-sdk/*` external), whose version varies by runtime and region. Presign bundles the lockfile's SDK on purpose (`bundleAwsSDK: true`, see "Upload URL contract"), and the WebP function's `externalModules: ['sharp']` replaces the default external, so its bundle includes the SDK too.
 
 ### Deliberate constraints
