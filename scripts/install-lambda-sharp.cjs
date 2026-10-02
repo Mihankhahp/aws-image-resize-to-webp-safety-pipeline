@@ -42,7 +42,7 @@ console.log(`Installing Lambda-compatible sharp into ${outputDir}`);
 
 const npmArgs = [
   'install',
-  'sharp@0.33.5',
+  'sharp@0.35.5',
   '--omit=dev',
   '--no-audit',
   '--no-fund',
