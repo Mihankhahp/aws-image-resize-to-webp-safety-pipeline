@@ -176,16 +176,18 @@ const outcomeTitle = (page) => page.locator('#outcomeTitle');
     /smaller/.test(await page.textContent('#outcomeBody')),
   );
   const fits = await page.evaluate(() =>
-    [...document.querySelectorAll('.preview img')].every((img) => {
-      const a = img.getBoundingClientRect();
-      const b = img.parentElement.getBoundingClientRect();
-      return (
-        a.top >= b.top &&
-        a.bottom <= b.bottom + 0.5 &&
-        a.left >= b.left &&
-        a.right <= b.right + 0.5
-      );
-    }),
+    [...document.querySelectorAll('.preview img, .preview canvas')].every(
+      (el) => {
+        const a = el.getBoundingClientRect();
+        const b = el.parentElement.getBoundingClientRect();
+        return (
+          a.top >= b.top &&
+          a.bottom <= b.bottom + 0.5 &&
+          a.left >= b.left &&
+          a.right <= b.right + 0.5
+        );
+      },
+    ),
   );
   check('previews stay inside their frames', fits);
   await page.screenshot({
@@ -312,11 +314,14 @@ const outcomeTitle = (page) => page.locator('#outcomeTitle');
     .filter({ hasText: 'Your WebP is ready' })
     .waitFor({ timeout: 20000 });
   await page.click('#detailsCard summary');
+  // A real click grants clipboard access; headless browsers need it granted.
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.click('#copyId');
-  check(
-    'copy button reports success',
-    (await page.textContent('#copyId')) === 'Copied',
+  await page.waitForFunction(
+    () => document.getElementById('copyId').textContent !== 'Copy',
   );
+  const copyLabel = await page.textContent('#copyId');
+  check('copy button reports success', copyLabel === 'Copied', copyLabel);
   check('no console errors (hosted)', errors.length === 0, errors.join(' | '));
   uiConfig.endpoint = null;
   await context.close();

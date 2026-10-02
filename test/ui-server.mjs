@@ -117,7 +117,9 @@ export function startUiServer(port) {
       }
       send(404, 'not found');
     } catch (error) {
-      send(500, String(error.stack));
+      // Details go to the test log, not to the browser.
+      console.error(error);
+      send(500, 'Internal error');
     }
   });
   return new Promise((resolve) => server.listen(port, () => resolve(server)));
