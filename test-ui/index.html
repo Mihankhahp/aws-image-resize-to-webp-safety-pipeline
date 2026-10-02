@@ -3,22 +3,61 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AWS Image Pipeline WebP Test UI</title>
+    <title>WebP Pipeline Tester</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232563eb'/%3E%3Cpath d='M8 22l6-7 4 4 3-3 3 6z' fill='white'/%3E%3Ccircle cx='21' cy='11' r='2.5' fill='white'/%3E%3C/svg%3E"
+    />
     <style>
       /*
-      Teaching note:
-      This UI is intentionally dependency-free. It can be served by any static
-      file server and talks directly to the API Gateway endpoints created by CDK.
-    */
+        Teaching note:
+        This UI is intentionally dependency-free. It can be served by any static
+        file server and talks directly to the API Gateway endpoints created by CDK.
+      */
       :root {
-        font-family:
-          Inter,
-          system-ui,
-          -apple-system,
-          Segoe UI,
-          sans-serif;
-        color: #e9f1ff;
-        background: #08111f;
+        color-scheme: light dark;
+        --bg: #f5f7fa;
+        --surface: #ffffff;
+        --surface-2: #f0f3f7;
+        --border: #dde3eb;
+        --text: #172031;
+        --muted: #5c6779;
+        --accent: #2563eb;
+        --accent-hover: #1d4fd8;
+        --accent-text: #ffffff;
+        --focus: #93b4ff;
+        --success: #0b7a4f;
+        --success-bg: #e6f5ee;
+        --danger: #c13434;
+        --danger-bg: #fdeceb;
+        --warning: #8f5a00;
+        --warning-bg: #fff3d9;
+        --neutral-bg: #eef1f6;
+        --radius: 14px;
+        --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 6px 20px rgb(16 24 40 / 6%);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0d121a;
+          --surface: #151c27;
+          --surface-2: #1c2533;
+          --border: #2b3647;
+          --text: #e7ecf4;
+          --muted: #9ba8bb;
+          --accent: #5b8cff;
+          --accent-hover: #7aa2ff;
+          --accent-text: #0b1220;
+          --focus: #3f6fe0;
+          --success: #3ccf95;
+          --success-bg: #10291f;
+          --danger: #ff8080;
+          --danger-bg: #331718;
+          --warning: #f2c063;
+          --warning-bg: #2e2410;
+          --neutral-bg: #1e2836;
+          --shadow: none;
+        }
       }
 
       * {
@@ -27,534 +66,1774 @@
 
       body {
         margin: 0;
-        background:
-          radial-gradient(circle at top left, #26447a55, transparent 35%),
-          #08111f;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          16px/1.5 system-ui,
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
       }
 
-      .wrap {
-        max-width: 1180px;
-        margin: auto;
-        padding: 28px;
-        min-width: 0;
+      .page {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 24px 16px 48px;
       }
 
-      .card {
-        background: #101c31;
-        border: 1px solid #ffffff14;
-        border-radius: 18px;
-        padding: 18px;
-        margin: 16px 0;
-        box-shadow: 0 18px 40px #0005;
-        min-width: 0;
+      header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px 24px;
+        margin-bottom: 20px;
       }
 
       h1 {
-        font-size: 2.3rem;
-        margin: 0.2rem 0;
+        font-size: 1.6rem;
+        line-height: 1.2;
+        margin: 0;
       }
 
       h2 {
-        margin-top: 0;
+        font-size: 1.1rem;
+        margin: 0 0 4px;
+      }
+
+      p {
+        margin: 0;
       }
 
       .muted {
-        color: #9fb2d4;
+        color: var(--muted);
       }
 
-      .grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 16px;
-        min-width: 0;
+      .small {
+        font-size: 0.875rem;
       }
 
-      .metrics {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 12px;
-        min-width: 0;
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 20px;
+        margin-bottom: 16px;
       }
 
-      .metric {
-        background: #ffffff08;
-        border-radius: 14px;
-        padding: 14px;
-        min-width: 0;
+      .card-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 16px;
       }
 
-      .metric b {
+      [hidden] {
+        display: none !important;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+
+      button,
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: 44px;
+        padding: 10px 18px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        font: inherit;
+        font-weight: 600;
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      button:hover,
+      .button:hover {
+        background: var(--surface-2);
+      }
+
+      .primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--accent-text);
+      }
+
+      .primary:hover {
+        background: var(--accent-hover);
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      button:focus-visible,
+      .button:focus-visible,
+      input:focus-visible,
+      summary:focus-visible {
+        outline: 3px solid var(--focus);
+        outline-offset: 2px;
+      }
+
+      /* Headings receive focus only to move screen-reader context. */
+      [tabindex='-1']:focus {
+        outline: none;
+      }
+
+      .link-button {
+        min-height: 0;
+        padding: 0;
+        border: 0;
+        background: none;
+        color: var(--accent);
+        font-weight: 600;
+      }
+
+      .link-button:hover {
+        background: none;
+        text-decoration: underline;
+      }
+
+      /* Connection */
+      .connection {
+        font-weight: 500;
+        font-size: 0.875rem;
+        min-height: 36px;
+        padding: 6px 12px;
+        border-radius: 999px;
+      }
+
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--muted);
+      }
+
+      .connected .dot {
+        background: var(--success);
+      }
+
+      label {
         display: block;
-        font-size: 1.25rem;
-        margin-top: 8px;
-        overflow-wrap: anywhere;
+        font-weight: 600;
+        margin-bottom: 6px;
       }
 
-      input,
-      button {
-        border-radius: 12px;
-        border: 1px solid #ffffff22;
-        padding: 12px;
-        background: #0b1628;
-        color: #e9f1ff;
+      input[type='url'] {
+        width: 100%;
+        min-height: 44px;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface);
+        color: var(--text);
         font: inherit;
       }
 
-      button {
-        cursor: pointer;
-        background: #477cff;
-        border: 0;
-        font-weight: 700;
+      .field-row {
+        display: flex;
+        gap: 8px;
       }
 
-      .secondary {
-        background: #ffffff12;
-      }
-
-      .progress {
-        height: 10px;
-        background: #ffffff12;
-        border-radius: 99px;
-        overflow: hidden;
-      }
-
-      .bar {
-        height: 100%;
-        width: 0;
-        background: linear-gradient(90deg, #477cff, #3ed7b4);
-        transition: width 0.2s;
-      }
-
-      .timeline {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 10px;
-      }
-
-      .step {
-        padding: 12px;
-        border-radius: 14px;
-        background: #ffffff08;
-        color: #9fb2d4;
-      }
-
-      .step.active {
-        outline: 2px solid #477cff;
-        color: #fff;
-      }
-
-      .step.done {
-        outline: 2px solid #3ed7b4;
-        color: #fff;
-      }
-
-      .preview {
-        max-width: 100%;
-        max-height: 420px;
-        border-radius: 14px;
-        background: #ffffff08;
-      }
-
-      /*
-      Diagnostics section:
-      The logs/status area now sits above the raw event window. The event window
-      gets its own constrained panel so long JSON fields, especially signed URLs,
-      scroll inside the panel instead of expanding the whole page.
-    */
-      .diagnostics {
-        width: min(100%, 960px);
-        margin: 16px auto;
-      }
-
-      .status-strip {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-        gap: 12px;
-        margin-bottom: 14px;
-      }
-
-      .status-pill {
-        background: #ffffff08;
-        border: 1px solid #ffffff12;
-        border-radius: 14px;
-        padding: 12px;
+      .field-row input {
+        flex: 1;
         min-width: 0;
       }
 
-      .status-pill b {
-        display: block;
-        margin-top: 6px;
+      .hint {
+        margin-top: 8px;
+      }
+
+      .error {
+        color: var(--danger);
+        font-weight: 600;
+        margin-top: 8px;
+      }
+
+      code {
+        font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+        font-size: 0.875em;
+        background: var(--surface-2);
+        border-radius: 6px;
+        padding: 1px 5px;
         overflow-wrap: anywhere;
       }
 
-      .logs {
+      /* File picker */
+      .dropzone {
         display: flex;
-        flex-direction: column-reverse;
+        flex-direction: column;
+        gap: 6px;
+        width: 100%;
+        min-height: 170px;
+        padding: 28px 16px;
+        border: 2px dashed var(--border);
+        border-radius: var(--radius);
+        background: var(--surface-2);
+        font-weight: 400;
+        text-align: center;
+      }
+
+      .dropzone:hover,
+      .dropzone.dragging {
+        border-color: var(--accent);
+        background: var(--surface-2);
+      }
+
+      .dropzone svg {
+        width: 40px;
+        height: 40px;
+        color: var(--accent);
+      }
+
+      .dropzone strong {
+        font-size: 1.05rem;
+      }
+
+      .dropzone .browse {
+        color: var(--accent);
+        text-decoration: underline;
+      }
+
+      .selected-file {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 12px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface-2);
+      }
+
+      .thumb {
+        flex: none;
+        width: 64px;
+        height: 64px;
+        border-radius: 10px;
+        object-fit: cover;
+        background: var(--neutral-bg);
+      }
+
+      .thumb-fallback {
+        display: grid;
+        place-items: center;
+        color: var(--muted);
+        font-size: 0.75rem;
+        font-weight: 700;
+      }
+
+      .run-file {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+      }
+
+      .run-file .thumb {
+        width: 44px;
+        height: 44px;
+        border-radius: 8px;
+      }
+
+      .run-file h2 {
+        overflow-wrap: anywhere;
+      }
+
+      .file-meta {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .file-name {
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px 12px;
+        margin-top: 16px;
+      }
+
+      /* Progress steps */
+      .steps {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+
+      .step {
+        position: relative;
+        display: flex;
+        gap: 14px;
+        padding-bottom: 18px;
+      }
+
+      .step:last-child {
+        padding-bottom: 0;
+      }
+
+      .step:not(:last-child)::before {
+        content: '';
+        position: absolute;
+        left: 15px;
+        top: 34px;
+        bottom: 2px;
+        width: 2px;
+        background: var(--border);
+      }
+
+      .step[data-state='done']:not(:last-child)::before {
+        background: var(--success);
+      }
+
+      .step-icon {
+        flex: none;
+        display: grid;
+        place-items: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        border: 2px solid var(--border);
+        background: var(--surface);
+        color: var(--muted);
+        font-weight: 700;
+        font-size: 0.875rem;
+      }
+
+      .step[data-state='active'] .step-icon {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      .step[data-state='done'] .step-icon {
+        border-color: var(--success);
+        background: var(--success);
+        color: var(--surface);
+      }
+
+      .step[data-state='failed'] .step-icon {
+        border-color: var(--danger);
+        background: var(--danger);
+        color: var(--surface);
+      }
+
+      .step[data-state='skipped'] .step-icon {
+        border-style: dashed;
+      }
+
+      .step[data-state='active'] .step-icon::after {
+        content: '';
+        width: 14px;
+        height: 14px;
+        border: 2px solid currentColor;
+        border-right-color: transparent;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      .step[data-state='active'] .step-icon span {
+        display: none;
+      }
+
+      .step-title {
+        font-weight: 600;
+      }
+
+      .step[data-state='pending'] .step-title {
+        color: var(--muted);
+      }
+
+      .step-detail {
+        color: var(--muted);
+        font-size: 0.925rem;
+      }
+
+      .step[data-state='failed'] .step-detail {
+        color: var(--danger);
+      }
+
+      .progress {
+        height: 8px;
+        margin-top: 8px;
+        max-width: 360px;
+        background: var(--surface-2);
+        border-radius: 999px;
+        overflow: hidden;
+      }
+
+      .progress div {
+        height: 100%;
+        width: 0;
+        background: var(--accent);
+        transition: width 0.2s;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .step[data-state='active'] .step-icon::after {
+          animation: none;
+          border-right-color: currentColor;
+          width: 8px;
+          height: 8px;
+          background: currentColor;
+        }
+
+        .progress div {
+          transition: none;
+        }
+      }
+
+      /* Outcome */
+      .outcome {
+        border-radius: var(--radius);
+        padding: 18px 20px;
+        margin-bottom: 16px;
+        border: 1px solid transparent;
+      }
+
+      .outcome h2 {
+        font-size: 1.2rem;
+      }
+
+      .outcome[data-tone='success'] {
+        background: var(--success-bg);
+        border-color: var(--success);
+      }
+
+      .outcome[data-tone='danger'] {
+        background: var(--danger-bg);
+        border-color: var(--danger);
+      }
+
+      .outcome[data-tone='warning'] {
+        background: var(--warning-bg);
+        border-color: var(--warning);
+      }
+
+      .outcome[data-tone='neutral'] {
+        background: var(--neutral-bg);
+        border-color: var(--border);
+      }
+
+      .outcome[data-tone='success'] h2 {
+        color: var(--success);
+      }
+
+      .outcome[data-tone='danger'] h2 {
+        color: var(--danger);
+      }
+
+      .outcome[data-tone='warning'] h2 {
+        color: var(--warning);
+      }
+
+      /* Results */
+      .compare {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .panel {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+      }
+
+      .preview {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 260px;
+        overflow: hidden;
+        background-color: var(--surface-2);
+        background-image: conic-gradient(
+          var(--neutral-bg) 25%,
+          transparent 0 50%,
+          var(--neutral-bg) 0 75%,
+          transparent 0
+        );
+        background-size: 20px 20px;
+      }
+
+      .preview img,
+      .preview canvas {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+
+      .panel-body {
+        padding: 14px 16px 16px;
+      }
+
+      .panel-title {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
         gap: 8px;
+      }
+
+      .big {
+        font-size: 1.35rem;
+        font-weight: 700;
+      }
+
+      dl.facts {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 4px 12px;
+        margin: 10px 0 0;
+        font-size: 0.925rem;
+      }
+
+      dl.facts dt {
+        color: var(--muted);
+      }
+
+      dl.facts dd {
+        margin: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .savings {
+        margin: 16px 0 4px;
+      }
+
+      .bars {
+        display: grid;
+        gap: 6px;
+        margin-top: 8px;
+      }
+
+      .bar {
+        display: grid;
+        grid-template-columns: 80px 1fr auto;
+        align-items: center;
+        gap: 10px;
+        font-size: 0.875rem;
+      }
+
+      .bar-track {
+        height: 10px;
+        border-radius: 999px;
+        background: var(--surface-2);
+        overflow: hidden;
+      }
+
+      .bar-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: var(--muted);
+      }
+
+      .bar-fill.webp {
+        background: var(--success);
+      }
+
+      /* Technical details */
+      details {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+      }
+
+      summary {
+        cursor: pointer;
+        padding: 14px 20px;
+        font-weight: 600;
+        border-radius: var(--radius);
+      }
+
+      .details-body {
+        padding: 0 20px 20px;
+        display: grid;
+        gap: 16px;
+      }
+
+      .id-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .id-row button {
+        min-height: 32px;
+        padding: 4px 10px;
+        font-size: 0.875rem;
+      }
+
+      ol.log {
+        margin: 0;
+        padding: 0;
+        list-style: none;
         max-height: 220px;
         overflow: auto;
-        padding-right: 4px;
-        margin-bottom: 18px;
+        font-size: 0.875rem;
       }
 
-      .log {
-        padding: 10px 12px;
-        border: 1px solid #ffffff12;
-        border-radius: 12px;
-        background: #ffffff08;
-        animation: in 0.25s ease;
+      ol.log li {
+        display: flex;
+        gap: 10px;
+        padding: 6px 0;
+        border-bottom: 1px solid var(--border);
       }
 
-      .event-window {
-        width: 100%;
-        max-width: 100%;
-        max-height: 420px;
-        overflow: auto;
-        border-radius: 12px;
-        border: 1px solid #ffffff12;
-        background: #ffffff08;
+      ol.log time {
+        flex: none;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
       }
 
-      .event-window pre {
-        /*
-        Keep JSON formatting intact. Horizontal scrolling is preferred here
-        because wrapped presigned URLs are hard to read while debugging.
-      */
-        width: max-content;
-        min-width: 100%;
+      ol.log .warn {
+        color: var(--warning);
+      }
+
+      ol.log .bad {
+        color: var(--danger);
+      }
+
+      ol.log .ok {
+        color: var(--success);
+      }
+
+      pre {
         margin: 0;
-        padding: 14px;
-        white-space: pre;
-        font-size: 0.9rem;
+        max-height: 360px;
+        overflow: auto;
+        padding: 12px;
+        border-radius: 10px;
+        background: var(--surface-2);
+        font-size: 0.8rem;
         line-height: 1.45;
-        background: transparent;
       }
 
-      .ok {
-        color: #3ed7b4;
-      }
-      .bad {
-        color: #ff7b91;
-      }
-      .warn {
-        color: #ffd166;
+      footer {
+        margin-top: 24px;
+        text-align: center;
       }
 
-      @keyframes in {
-        from {
-          opacity: 0;
-          transform: translateY(8px);
+      @media (max-width: 640px) {
+        h1 {
+          font-size: 1.35rem;
         }
-        to {
-          opacity: 1;
-          transform: none;
-        }
-      }
 
-      @media (max-width: 900px) {
-        .grid,
-        .metrics,
-        .timeline,
-        .status-strip {
+        .card {
+          padding: 16px;
+        }
+
+        .compare {
           grid-template-columns: 1fr;
         }
 
-        .wrap {
-          padding: 18px;
+        .preview {
+          height: 200px;
+        }
+
+        .field-row {
+          flex-direction: column;
+        }
+
+        .actions > .primary {
+          width: 100%;
         }
       }
     </style>
   </head>
   <body>
-    <div class="wrap">
-      <p class="muted">Test Console</p>
-      <h1>AWS Image Pipeline WebP Test UI</h1>
-      <p class="muted">
-        Upload an image, poll status, and compare the safe original copy with
-        the generated WebP file.
-      </p>
-
-      <div class="card">
-        <h2>Upload</h2>
-        <label class="muted" for="endpoint">Upload URL endpoint</label><br />
-        <input
-          id="endpoint"
-          style="width: 100%"
-          value="https://0252bbfkk7.execute-api.us-east-2.amazonaws.com/v1/upload-url"
-        /><br /><br />
-        <input id="file" type="file" accept="image/*" />
-        <button id="start">Upload &amp; Test</button>
-        <button id="reset" class="secondary">Reset</button>
-        <p id="fileMeta" class="muted">No file selected</p>
-        <div class="progress"><div id="bar" class="bar"></div></div>
-        <p id="progress" class="muted">0%</p>
-      </div>
-
-      <div class="card">
-        <h2>Timeline</h2>
-        <div class="timeline" id="timeline">
-          <div class="step" data-s="PRESIGNED">Presigned</div>
-          <div class="step" data-s="UPLOADED">Uploaded</div>
-          <div class="step" data-s="SCANNED">Scanned</div>
-          <div class="step" data-s="WEBP_CREATED">WebP Ready</div>
-        </div>
-        <p id="message" class="muted">Waiting.</p>
-      </div>
-
-      <div class="metrics">
-        <div class="metric">Image ID<b id="imageId">—</b></div>
-        <div class="metric">Uploaded size<b id="uploadSize">—</b></div>
-        <div class="metric">Safe original<b id="safeSize">—</b></div>
-        <div class="metric">
-          WebP size<b id="webpSize">—</b
-          ><span id="saving" class="muted">—</span>
-        </div>
-      </div>
-
-      <div class="grid">
-        <div class="card">
-          <h2>Local Preview</h2>
-          <img id="local" class="preview" alt="Selected local upload preview" />
-          <p id="localMeta" class="muted">—</p>
-        </div>
-        <div class="card">
-          <h2>WebP Preview</h2>
-          <img id="webp" class="preview" alt="Generated WebP preview" />
-          <p>
-            <a id="originalLink" target="_blank" rel="noopener"
-              >Open safe original</a
-            >
-            · <a id="webpLink" target="_blank" rel="noopener">Open WebP</a>
+    <div class="page">
+      <header>
+        <div>
+          <h1>WebP Pipeline Tester</h1>
+          <p class="muted">
+            Upload an image, watch it get scanned for malware, and get a WebP
+            copy back.
           </p>
         </div>
-      </div>
+        <button
+          id="connectionButton"
+          class="connection"
+          type="button"
+          aria-controls="connectCard"
+          aria-expanded="false"
+        >
+          <span class="dot" aria-hidden="true"></span>
+          <span id="connectionLabel">Not connected</span>
+        </button>
+      </header>
 
-      <div class="card diagnostics">
-        <h2>Status &amp; Logging</h2>
-        <p class="muted">
-          This section is intentionally above the raw event window so students
-          can first read the human-friendly status, then inspect the full API
-          event payload below.
+      <section id="connectCard" class="card" aria-labelledby="connectTitle">
+        <h2 id="connectTitle">Connect to your deployment</h2>
+        <p class="muted small" style="margin-bottom: 14px">
+          Paste the <code>UploadUrlEndpoint</code> output printed by
+          <code>npx cdk deploy</code> (also under CloudFormation →
+          ImagePipelineStack → Outputs). It is remembered in this browser.
         </p>
-        <div class="status-strip">
-          <div class="status-pill">
-            Current status<b id="currentStatus">Waiting</b>
+        <form id="connectForm" novalidate>
+          <label for="endpoint">Upload URL endpoint</label>
+          <div class="field-row">
+            <input
+              id="endpoint"
+              type="url"
+              inputmode="url"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="https://abc123.execute-api.us-east-2.amazonaws.com/v1/upload-url"
+              aria-describedby="endpointError"
+            />
+            <button class="primary" type="submit">Save</button>
           </div>
-          <div class="status-pill">Last update<b id="lastUpdate">—</b></div>
-        </div>
-        <div id="logs" class="logs" aria-live="polite"></div>
+          <p id="endpointError" class="error" role="alert" hidden></p>
+        </form>
+      </section>
 
-        <h2>Event Window</h2>
-        <p class="muted">
-          The event payload is width-constrained. Scroll horizontally for long
-          values such as signed URLs, and vertically for large responses.
-        </p>
-        <div class="event-window">
-          <pre id="raw">No status yet.</pre>
+      <section id="uploadCard" class="card" aria-labelledby="uploadTitle">
+        <div class="card-header">
+          <h2 id="uploadTitle">Choose an image</h2>
+          <p class="muted small">JPEG, PNG, WebP, GIF, AVIF or TIFF</p>
         </div>
-      </div>
+
+        <input
+          id="fileInput"
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/tiff"
+          hidden
+        />
+        <button id="dropzone" class="dropzone" type="button">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M12 16V4m0 0-4 4m4-4 4 4M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <strong>Drop an image here</strong>
+          <span class="muted"
+            >or <span class="browse">browse your files</span> · you can also
+            paste</span
+          >
+        </button>
+
+        <div id="selectedFile" class="selected-file" hidden>
+          <canvas id="thumb" class="thumb" aria-hidden="true" hidden></canvas>
+          <div id="thumbFallback" class="thumb thumb-fallback" hidden></div>
+          <div class="file-meta">
+            <p id="fileName" class="file-name"></p>
+            <p id="fileFacts" class="muted small"></p>
+          </div>
+          <button id="changeFile" type="button">Change</button>
+        </div>
+
+        <p id="fileError" class="error" role="alert" hidden></p>
+        <p id="fileWarning" class="muted small hint" hidden></p>
+
+        <div class="actions">
+          <button id="startButton" class="primary" type="button" disabled>
+            Upload and process
+          </button>
+          <span id="startHint" class="muted small"></span>
+        </div>
+      </section>
+
+      <section
+        id="progressCard"
+        class="card"
+        aria-labelledby="progressTitle"
+        hidden
+      >
+        <div class="card-header">
+          <div class="run-file">
+            <canvas id="runThumb" class="thumb" aria-hidden="true"></canvas>
+            <div>
+              <h2 id="progressTitle" tabindex="-1"></h2>
+              <p id="runFacts" class="muted small"></p>
+            </div>
+          </div>
+          <p class="muted small">
+            <span id="elapsed">0 s</span>
+          </p>
+        </div>
+        <ol class="steps">
+          <li class="step" data-step="upload" data-state="pending">
+            <span class="step-icon"><span>1</span></span>
+            <div>
+              <p class="step-title">Upload to S3</p>
+              <p class="step-detail"></p>
+              <div class="progress" hidden><div></div></div>
+            </div>
+          </li>
+          <li class="step" data-step="scan" data-state="pending">
+            <span class="step-icon"><span>2</span></span>
+            <div>
+              <p class="step-title">Malware scan</p>
+              <p class="step-detail"></p>
+            </div>
+          </li>
+          <li class="step" data-step="convert" data-state="pending">
+            <span class="step-icon"><span>3</span></span>
+            <div>
+              <p class="step-title">WebP conversion</p>
+              <p class="step-detail"></p>
+            </div>
+          </li>
+          <li class="step" data-step="ready" data-state="pending">
+            <span class="step-icon"><span>4</span></span>
+            <div>
+              <p class="step-title">Ready to download</p>
+              <p class="step-detail"></p>
+            </div>
+          </li>
+        </ol>
+        <div id="runActions" class="actions" hidden>
+          <button id="retryButton" type="button" hidden>Keep checking</button>
+          <button id="startOverRunning" type="button">Cancel upload</button>
+        </div>
+      </section>
+
+      <section id="outcome" class="outcome" hidden>
+        <h2 id="outcomeTitle"></h2>
+        <p id="outcomeBody"></p>
+        <div class="actions">
+          <a id="downloadWebp" class="button primary" hidden>Download WebP</a>
+          <a
+            id="openOriginal"
+            class="button"
+            target="_blank"
+            rel="noopener"
+            hidden
+            >Open safe original</a
+          >
+          <button id="tryAgain" class="primary" type="button" hidden>
+            Try again
+          </button>
+          <button id="startOver" type="button">Upload another image</button>
+        </div>
+      </section>
+
+      <section
+        id="resultsCard"
+        class="card"
+        aria-labelledby="resultsTitle"
+        hidden
+      >
+        <div class="card-header">
+          <h2 id="resultsTitle">Original vs. WebP</h2>
+          <p id="linkExpiry" class="muted small"></p>
+        </div>
+        <div class="compare">
+          <div class="panel">
+            <div class="preview">
+              <canvas
+                id="originalPreview"
+                role="img"
+                aria-label="Original upload"
+              ></canvas>
+              <p id="originalNoPreview" class="muted small" hidden>
+                Your browser can’t preview this format.
+              </p>
+            </div>
+            <div class="panel-body">
+              <div class="panel-title">
+                <h3 class="small muted" style="margin: 0">Original</h3>
+                <span id="originalSize" class="big"></span>
+              </div>
+              <dl class="facts">
+                <dt>Format</dt>
+                <dd id="originalFormat"></dd>
+                <dt>Dimensions</dt>
+                <dd id="originalDims"></dd>
+              </dl>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="preview">
+              <img id="webpPreview" alt="Generated WebP" />
+            </div>
+            <div class="panel-body">
+              <div class="panel-title">
+                <h3 class="small muted" style="margin: 0">WebP</h3>
+                <span id="webpSize" class="big"></span>
+              </div>
+              <dl class="facts">
+                <dt>Format</dt>
+                <dd id="webpFormat"></dd>
+                <dt>Dimensions</dt>
+                <dd id="webpDims"></dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+        <div class="savings">
+          <p id="savingsText" class="step-title"></p>
+          <div class="bars" aria-hidden="true">
+            <div class="bar">
+              <span>Original</span>
+              <div class="bar-track">
+                <div class="bar-fill" style="width: 100%"></div>
+              </div>
+              <span id="barOriginalLabel"></span>
+            </div>
+            <div class="bar">
+              <span>WebP</span>
+              <div class="bar-track">
+                <div id="barWebp" class="bar-fill webp"></div>
+              </div>
+              <span id="barWebpLabel"></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <details id="detailsCard" hidden>
+        <summary>Technical details</summary>
+        <div class="details-body">
+          <div>
+            <p class="step-title">Image ID</p>
+            <div class="id-row">
+              <code id="imageIdValue"></code>
+              <button id="copyId" type="button">Copy</button>
+            </div>
+          </div>
+          <div>
+            <p class="step-title">Activity</p>
+            <ol id="log" class="log"></ol>
+          </div>
+          <div>
+            <p class="step-title">Latest status response</p>
+            <pre id="raw">No status yet.</pre>
+          </div>
+        </div>
+      </details>
+
+      <p id="announcer" class="sr-only" aria-live="polite"></p>
+
+      <footer class="muted small">
+        <p id="retentionNote">
+          Uploaded and processed files are deleted automatically by S3
+          Lifecycle. Don't upload anything sensitive.
+        </p>
+      </footer>
     </div>
 
     <script type="module">
-      // Small DOM helper. Example: $('file') returns document.getElementById('file').
       const $ = (id) => document.getElementById(id);
 
-      let file;
-      let objectUrl;
-      let pollTimer;
-
-      // These states end the polling loop. Some are success paths, others are failure
-      // or teaching/demo states that should not be polled forever.
-      const terminal = new Set([
+      // Keep in sync with ALLOWED_CONTENT_TYPES in lib/pipeline-config.js.
+      const SUPPORTED = {
+        'image/jpeg': 'JPEG',
+        'image/png': 'PNG',
+        'image/webp': 'WebP',
+        'image/gif': 'GIF',
+        'image/avif': 'AVIF',
+        'image/tiff': 'TIFF',
+      };
+      const BY_EXTENSION = {
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        png: 'image/png',
+        webp: 'image/webp',
+        gif: 'image/gif',
+        avif: 'image/avif',
+        tif: 'image/tiff',
+        tiff: 'image/tiff',
+      };
+      // Statuses after which the pipeline does nothing more for an image.
+      const FINAL = new Set([
         'WEBP_CREATED',
+        'WEBP_FAILED',
+        'WEBP_SKIPPED',
+        'NO_VARIANT_REQUIRED',
         'BLOCKED',
         'SCAN_FAILED',
         'SCAN_SKIPPED',
+        'SCAN_UNKNOWN',
       ]);
+      const LARGE_FILE_BYTES = 25 * 1024 * 1024;
+      const SLOW_AFTER_MS = 90_000;
+      const STORAGE_KEY = 'webp-pipeline-tester.endpoint';
 
+      const state = {
+        endpoint: '',
+        file: null,
+        contentType: '',
+        bitmap: null,
+        run: null,
+      };
+
+      // Previews are drawn from a decoded bitmap rather than an object URL, so
+      // nothing derived from the picked file is ever used as a URL.
+      function drawPreview(canvas, bitmap, maxSide) {
+        const scale = Math.min(
+          1,
+          maxSide / Math.max(bitmap.width, bitmap.height),
+        );
+        canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+        canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+        canvas
+          .getContext('2d')
+          .drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      }
+      function releaseBitmap() {
+        state.bitmap?.close();
+        state.bitmap = null;
+      }
+
+      // ---- Formatting helpers ------------------------------------------------
       function bytes(n) {
-        if (n == null) return '—';
+        if (n == null || Number.isNaN(n)) return '—';
         const units = ['B', 'KB', 'MB', 'GB'];
         let i = 0;
         while (n >= 1024 && i < units.length - 1) {
           n /= 1024;
           i++;
         }
-        return `${n.toFixed(i ? 1 : 0)} ${units[i]}`;
+        return `${n.toFixed(i && n < 10 ? 1 : 0)} ${units[i]}`;
       }
-
-      function setStatus(status) {
-        const timestamp = new Date().toLocaleTimeString();
-        $('currentStatus').textContent = status;
-        $('lastUpdate').textContent = timestamp;
-        $('message').textContent = status;
-      }
-
-      function log(message, className = '') {
-        const item = document.createElement('div');
-        item.className = `log ${className}`;
-        item.textContent = `${new Date().toLocaleTimeString()}  ${message}`;
-        $('logs').appendChild(item);
-      }
-
-      function timeline(status) {
-        const order = ['PRESIGNED', 'UPLOADED', 'SCANNED', 'WEBP_CREATED'];
-        let currentIndex = order.indexOf(status);
-
-        // Failure-like statuses occur after the scan step in this pipeline, so the UI
-        // highlights the scan step instead of leaving the timeline blank.
-        if (['BLOCKED', 'SCAN_FAILED', 'SCAN_SKIPPED'].includes(status)) {
-          currentIndex = 2;
-        }
-
-        document.querySelectorAll('.step').forEach((element, index) => {
-          element.className = `step ${index < currentIndex ? 'done' : index === currentIndex ? 'active' : ''}`;
+      const clock = (date) =>
+        date.toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
         });
+      const announce = (text) => ($('announcer').textContent = text);
+
+      // ---- Connection --------------------------------------------------------
+      function normalizeEndpoint(raw) {
+        const value = raw.trim().replace(/\/+$/, '');
+        let url;
+        try {
+          url = new URL(value);
+        } catch {
+          return { error: 'Enter the full URL, starting with https://' };
+        }
+        if (!/^https?:$/.test(url.protocol))
+          return { error: 'The URL must start with https://' };
+        // Accept the API base URL as well as the upload-url endpoint itself.
+        const endpoint = value.endsWith('/upload-url')
+          ? value
+          : `${value}/upload-url`;
+        return { endpoint };
       }
-
-      function statusUrl() {
-        return $('endpoint')
-          .value.trim()
-          .replace(/\/upload-url$/, `/images/${window.imageId}`);
+      function connectionName(endpoint) {
+        const { hostname, host } = new URL(endpoint);
+        const match = hostname.match(
+          /^([^.]+)\.execute-api\.([^.]+)\.amazonaws\.com$/,
+        );
+        return match ? `${match[1]} · ${match[2]}` : host;
       }
-
-      $('file').onchange = (event) => {
-        file = event.target.files[0];
-        if (!file) return;
-
-        if (objectUrl) URL.revokeObjectURL(objectUrl);
-        objectUrl = URL.createObjectURL(file);
-
-        $('local').src = objectUrl;
-        $('fileMeta').textContent =
-          `${file.name} • ${file.type} • ${bytes(file.size)}`;
-        $('uploadSize').textContent = bytes(file.size);
-        $('localMeta').textContent = `${file.name} • ${bytes(file.size)}`;
-        setStatus('File selected');
-        log('File selected.');
+      function readStoredEndpoint() {
+        try {
+          return localStorage.getItem(STORAGE_KEY) || '';
+        } catch {
+          return '';
+        }
+      }
+      function setEndpoint(endpoint) {
+        state.endpoint = endpoint;
+        try {
+          localStorage.setItem(STORAGE_KEY, endpoint);
+        } catch {
+          // Storage can be unavailable (private mode); the endpoint still works for this visit.
+        }
+        $('endpoint').value = endpoint;
+        $('connectionLabel').textContent =
+          `Connected · ${connectionName(endpoint)}`;
+        $('connectionButton').classList.add('connected');
+        showConnect(false);
+        updateStartButton();
+      }
+      function showConnect(show) {
+        $('connectCard').hidden = !show;
+        $('connectionButton').setAttribute('aria-expanded', String(show));
+        if (show) $('endpoint').focus();
+      }
+      $('connectionButton').onclick = () =>
+        showConnect($('connectCard').hidden);
+      $('connectForm').onsubmit = (event) => {
+        event.preventDefault();
+        const { endpoint, error } = normalizeEndpoint($('endpoint').value);
+        $('endpointError').hidden = !error;
+        $('endpointError').textContent = error || '';
+        if (error) return;
+        setEndpoint(endpoint);
+        $('dropzone').focus();
       };
 
-      $('reset').onclick = () => location.reload();
+      // ---- File selection ----------------------------------------------------
+      function contentTypeFor(file) {
+        if (file.type) return file.type.toLowerCase();
+        const extension = file.name.split('.').pop().toLowerCase();
+        return BY_EXTENSION[extension] || '';
+      }
+      function unsupportedMessage(file, type) {
+        if (/hei[cf]/.test(type) || /\.hei[cf]$/i.test(file.name))
+          return 'HEIC/HEIF photos aren’t supported. Export the photo as JPEG and try again.';
+        if (type === 'image/svg+xml')
+          return 'SVG isn’t supported, because SVG files can contain scripts. Use a PNG instead.';
+        return `${file.name} isn’t a supported image. Use JPEG, PNG, WebP, GIF, AVIF or TIFF.`;
+      }
+      function selectFile(file) {
+        if (!file || state.run) return;
+        const type = contentTypeFor(file);
+        if (!SUPPORTED[type]) {
+          $('fileError').textContent = unsupportedMessage(file, type);
+          $('fileError').hidden = false;
+          return;
+        }
+        $('fileError').hidden = true;
+        releaseBitmap();
+        state.file = file;
+        state.contentType = type;
+        state.dims = '';
 
-      async function xhrUpload(url) {
+        $('fileName').textContent = file.name;
+        $('fileFacts').textContent = `${SUPPORTED[type]} · ${bytes(file.size)}`;
+        $('thumb').hidden = true;
+        $('thumbFallback').hidden = true;
+        // Most browsers cannot decode TIFF, and a corrupt file cannot be shown.
+        createImageBitmap(file).then(
+          (bitmap) => {
+            if (state.file !== file) return bitmap.close();
+            state.bitmap = bitmap;
+            state.dims = `${bitmap.width} × ${bitmap.height}`;
+            $('fileFacts').textContent =
+              `${SUPPORTED[type]} · ${bytes(file.size)} · ${state.dims} px`;
+            drawPreview($('thumb'), bitmap, 128);
+            $('thumb').hidden = false;
+          },
+          () => {
+            if (state.file !== file) return;
+            $('thumbFallback').textContent = SUPPORTED[type];
+            $('thumbFallback').hidden = false;
+          },
+        );
+        $('fileWarning').hidden = file.size <= LARGE_FILE_BYTES;
+        $('fileWarning').textContent =
+          'Large files take longer to scan and can exceed the converter’s memory.';
+        $('dropzone').hidden = true;
+        $('selectedFile').hidden = false;
+        updateStartButton();
+        $('startButton').focus();
+      }
+      function clearFile() {
+        releaseBitmap();
+        Object.assign(state, { file: null, contentType: '', dims: '' });
+        $('fileInput').value = '';
+        $('thumbFallback').hidden = true;
+        $('selectedFile').hidden = true;
+        $('dropzone').hidden = false;
+        $('fileWarning').hidden = true;
+        updateStartButton();
+      }
+      function updateStartButton() {
+        const hint = !state.endpoint
+          ? 'Connect to your deployment first.'
+          : !state.file
+            ? 'Choose an image to continue.'
+            : '';
+        $('startButton').disabled = Boolean(hint) || Boolean(state.run);
+        $('startHint').textContent = state.run ? '' : hint;
+      }
+
+      $('dropzone').onclick = () => $('fileInput').click();
+      $('changeFile').onclick = () => $('fileInput').click();
+      $('fileInput').onchange = (event) => selectFile(event.target.files[0]);
+      const zone = $('dropzone');
+      ['dragenter', 'dragover'].forEach((type) =>
+        zone.addEventListener(type, (event) => {
+          event.preventDefault();
+          zone.classList.add('dragging');
+        }),
+      );
+      ['dragleave', 'drop'].forEach((type) =>
+        zone.addEventListener(type, () => zone.classList.remove('dragging')),
+      );
+      zone.addEventListener('drop', (event) => {
+        event.preventDefault();
+        selectFile(event.dataTransfer.files[0]);
+      });
+      // Dropping a file anywhere else must not navigate away from the page.
+      window.addEventListener('dragover', (event) => event.preventDefault());
+      window.addEventListener('drop', (event) => event.preventDefault());
+      window.addEventListener('paste', (event) => {
+        const file = [...(event.clipboardData?.files || [])][0];
+        if (file) selectFile(file);
+      });
+
+      // ---- Progress display --------------------------------------------------
+      function setStep(name, stepState, detail) {
+        const step = document.querySelector(`[data-step="${name}"]`);
+        step.dataset.state = stepState;
+        const icon = step.querySelector('.step-icon span');
+        icon.textContent =
+          stepState === 'done'
+            ? '✓'
+            : stepState === 'failed'
+              ? '!'
+              : stepState === 'skipped'
+                ? '–'
+                : String([...step.parentElement.children].indexOf(step) + 1);
+        if (detail !== undefined)
+          step.querySelector('.step-detail').textContent = detail;
+      }
+      function setUploadProgress(loaded, total) {
+        const percent = total ? Math.round((loaded / total) * 100) : 0;
+        const bar = document.querySelector('[data-step="upload"] .progress');
+        bar.hidden = false;
+        bar.firstElementChild.style.width = `${percent}%`;
+        setStep(
+          'upload',
+          'active',
+          `Uploading… ${percent}% (${bytes(loaded)} of ${bytes(total)})`,
+        );
+      }
+      function log(message, tone = '') {
+        const item = document.createElement('li');
+        const time = document.createElement('time');
+        time.textContent = clock(new Date());
+        const text = document.createElement('span');
+        text.textContent = message;
+        if (tone) text.className = tone;
+        item.append(time, text);
+        $('log').prepend(item);
+      }
+
+      const threatNames = (status) =>
+        (status.threats || [])
+          .map((t) => t.name)
+          .filter(Boolean)
+          .join(', ');
+      function humanizeFailure(reason = '') {
+        const format = reason.match(/Unsupported image format: (\w+)/);
+        if (format)
+          return `The file’s contents aren’t a supported image (detected ${format[1].toUpperCase()}).`;
+        if (/unsupported image format|Input buffer/i.test(reason))
+          return 'The file couldn’t be read as an image. It may be corrupt, or not really the type its name suggests.';
+        if (/^Retries exhausted/.test(reason))
+          return `The converter kept failing (${reason.replace('Retries exhausted: ', '')}). Check the CreateWebpVariantsFunction logs and the VariantDlq queue.`;
+        return reason || 'No reason was recorded.';
+      }
+
+      // Step states and outcome copy for every status the API can return once
+      // the browser has finished uploading.
+      function stepsFor(status) {
+        const s = status.status;
+        const scanDone = [
+          'SCANNED',
+          'NO_VARIANT_REQUIRED',
+          'WEBP_CREATED',
+          'WEBP_FAILED',
+          'WEBP_SKIPPED',
+        ].includes(s);
+        const steps = {
+          scan: scanDone
+            ? ['done', 'No threats found']
+            : [
+                'active',
+                'GuardDuty is scanning the file. This usually takes a few seconds.',
+              ],
+          convert: ['pending', 'Starts after a clean scan.'],
+          ready: ['pending', ''],
+        };
+        if (s === 'BLOCKED')
+          steps.scan = [
+            'failed',
+            `Threat found${threatNames(status) ? `: ${threatNames(status)}` : ''}`,
+          ];
+        if (s === 'SCAN_FAILED')
+          steps.scan = ['failed', 'GuardDuty couldn’t scan the file.'];
+        if (s === 'SCAN_SKIPPED')
+          steps.scan = ['failed', 'GuardDuty skipped the scan.'];
+        if (s === 'SCAN_UNKNOWN')
+          steps.scan = ['failed', 'The scan result is unavailable.'];
+        if (s === 'SCANNED')
+          steps.convert = ['active', 'Resizing and converting to WebP…'];
+        if (s === 'WEBP_CREATED') {
+          steps.convert = [
+            'done',
+            `${status.webpWidth} × ${status.webpHeight} WebP at quality ${status.webpQuality}`,
+          ];
+          steps.ready = ['done', 'Download links are below.'];
+        }
+        if (s === 'WEBP_FAILED')
+          steps.convert = [
+            'failed',
+            humanizeFailure(status.variantFailureReason),
+          ];
+        if (s === 'WEBP_SKIPPED')
+          steps.convert = [
+            'failed',
+            'Skipped: the file’s scan tags didn’t allow conversion.',
+          ];
+        if (s === 'NO_VARIANT_REQUIRED') {
+          steps.convert = ['skipped', 'Not needed for this file.'];
+          steps.ready = ['skipped', 'Nothing to download.'];
+        }
+        return steps;
+      }
+      function outcomeFor(status) {
+        const days = status.objectRetentionDays || 1;
+        const deleted = `It will be deleted automatically after ${days} day${days === 1 ? '' : 's'}.`;
+        const original = status.sizeBytes;
+        switch (status.status) {
+          case 'WEBP_CREATED': {
+            const saved = original
+              ? Math.round((1 - status.webpSizeBytes / original) * 100)
+              : 0;
+            return {
+              tone: 'success',
+              title: 'Your WebP is ready',
+              body:
+                saved >= 0
+                  ? `${saved}% smaller than the original (${bytes(original)} → ${bytes(status.webpSizeBytes)}).`
+                  : `The WebP is ${-saved}% larger than the original (${bytes(original)} → ${bytes(status.webpSizeBytes)}).`,
+            };
+          }
+          case 'BLOCKED':
+            return {
+              tone: 'danger',
+              title: 'Upload blocked: malware detected',
+              body: `GuardDuty flagged this file${threatNames(status) ? ` (${threatNames(status)})` : ''}, so it wasn’t converted. ${deleted}`,
+            };
+          case 'WEBP_FAILED':
+            return {
+              tone: 'danger',
+              title: 'This image couldn’t be converted',
+              body: humanizeFailure(status.variantFailureReason),
+            };
+          case 'WEBP_SKIPPED':
+            return {
+              tone: 'warning',
+              title: 'Conversion skipped',
+              body: 'The uploaded object’s scan tags didn’t mark it as clean when conversion ran. Try uploading the image again.',
+            };
+          case 'NO_VARIANT_REQUIRED':
+            return {
+              tone: 'neutral',
+              title: 'Scanned clean, no WebP needed',
+              body:
+                status.variantSkipReason === 'BELOW_SIZE_THRESHOLD'
+                  ? 'The image is smaller than this deployment’s resizeThresholdBytes setting, so it wasn’t converted.'
+                  : 'The uploaded file type can’t be converted to WebP.',
+            };
+          default:
+            return {
+              tone: 'warning',
+              title: 'The malware scan didn’t finish',
+              body: `GuardDuty reported ${status.scanStatus || 'no result'}, so the image wasn’t converted. ${deleted}`,
+            };
+        }
+      }
+
+      // ---- Run: presign → upload → poll --------------------------------------
+      function statusUrl(imageId) {
+        return state.endpoint.replace(
+          /\/upload-url$/,
+          `/images/${encodeURIComponent(imageId)}`,
+        );
+      }
+      async function requestUploadUrl() {
+        const response = await fetch(state.endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filename: state.file.name,
+            contentType: state.contentType,
+          }),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok)
+          throw new Error(
+            body.message ||
+              `The API returned ${response.status}. Check the endpoint URL.`,
+          );
+        return body;
+      }
+      function uploadFile(run, presigned) {
         return new Promise((resolve, reject) => {
           const request = new XMLHttpRequest();
-          request.open('PUT', url);
-          request.setRequestHeader('Content-Type', file.type);
-
-          request.upload.onprogress = (event) => {
-            if (!event.lengthComputable) return;
-            const percent = Math.round((event.loaded / event.total) * 100);
-            $('bar').style.width = `${percent}%`;
-            $('progress').textContent = `${percent}%`;
+          run.xhr = request;
+          request.open('PUT', presigned.uploadUrl);
+          // The URL is signed for these exact headers (Content-Type and If-None-Match).
+          const headers = presigned.requiredHeaders || {
+            'Content-Type': state.contentType,
           };
-
-          request.onload = () =>
-            request.status < 300
-              ? resolve()
-              : reject(new Error(`Upload failed ${request.status}`));
-
-          request.onerror = () => reject(new Error('Upload network error'));
-          request.send(file);
+          for (const [name, value] of Object.entries(headers))
+            request.setRequestHeader(name, value);
+          request.upload.onprogress = (event) => {
+            if (event.lengthComputable)
+              setUploadProgress(event.loaded, event.total);
+          };
+          request.onload = () => {
+            if (request.status < 300) return resolve();
+            if (request.status === 412)
+              return reject(
+                new Error(
+                  'This upload link was already used. Each link can upload one file.',
+                ),
+              );
+            if (request.status === 403)
+              return reject(
+                new Error(
+                  'S3 rejected the upload (403). The link may have expired; try again.',
+                ),
+              );
+            reject(new Error(`S3 rejected the upload (${request.status}).`));
+          };
+          request.onerror = () =>
+            reject(new Error('Network error while uploading to S3.'));
+          request.onabort = () => reject(new Error('Upload cancelled.'));
+          request.send(state.file);
         });
       }
 
-      async function signedSize(url) {
-        const response = await fetch(url);
-        const blob = await response.blob();
-        return { size: blob.size, url: URL.createObjectURL(blob) };
+      function resetProgress() {
+        for (const name of ['upload', 'scan', 'convert', 'ready'])
+          setStep(name, 'pending', '');
+        const bar = document.querySelector('[data-step="upload"] .progress');
+        bar.hidden = true;
+        bar.firstElementChild.style.width = '0';
+        setStep('scan', 'pending', 'Starts when the upload finishes.');
+        setStep('convert', 'pending', 'Starts after a clean scan.');
+      }
+      function setRunning(running) {
+        $('dropzone').disabled = running;
+        $('changeFile').disabled = running;
+        $('runActions').hidden = !running;
+        $('retryButton').hidden = true;
+        updateStartButton();
       }
 
-      async function poll() {
-        const response = await fetch(statusUrl());
-        const status = await response.json();
+      async function startRun() {
+        if (!state.file || !state.endpoint || state.run) return;
+        const run = { startedAt: Date.now(), errors: 0 };
+        state.run = run;
+        $('outcome').hidden = true;
+        $('resultsCard').hidden = true;
+        $('detailsCard').hidden = false;
+        $('log').replaceChildren();
+        $('raw').textContent = 'No status yet.';
+        resetProgress();
+        // One thing at a time: the picker steps aside while this image is processed.
+        $('uploadCard').hidden = true;
+        $('runThumb').hidden = !state.bitmap;
+        if (state.bitmap) drawPreview($('runThumb'), state.bitmap, 96);
+        $('progressTitle').textContent = state.file.name;
+        $('runFacts').textContent = $('fileFacts').textContent;
+        $('startOverRunning').textContent = 'Cancel upload';
+        $('progressCard').hidden = false;
+        $('progressTitle').focus();
+        setRunning(true);
+        run.ticker = setInterval(() => {
+          $('elapsed').textContent =
+            `${Math.round((Date.now() - run.startedAt) / 1000)} s`;
+        }, 1000);
+        $('elapsed').textContent = '0 s';
 
-        $('raw').textContent = JSON.stringify(status, null, 2);
-        setStatus(status.status);
-        timeline(status.status);
-        log(
-          `Status: ${status.status}`,
-          status.status === 'WEBP_CREATED' ? 'ok' : '',
-        );
-
-        if (status.status === 'WEBP_CREATED') {
-          clearTimeout(pollTimer);
-
-          const safe = status.variants.original;
-          const webp = status.variants.webp;
-
-          $('originalLink').href = safe.downloadUrl;
-          $('webpLink').href = webp.downloadUrl;
-          $('safeSize').textContent = bytes(safe.sizeBytes);
-          $('webpSize').textContent = bytes(webp.sizeBytes);
-
-          if (file && webp.sizeBytes) {
-            const percent = (1 - webp.sizeBytes / file.size) * 100;
-            $('saving').textContent =
-              percent >= 0
-                ? `${percent.toFixed(1)}% smaller than upload`
-                : `${Math.abs(percent).toFixed(1)}% larger than upload`;
-          }
-
-          try {
-            const webpBlob = await signedSize(webp.downloadUrl);
-            $('webp').src = webpBlob.url;
-          } catch {
-            log(
-              'WebP preview could not be loaded from the signed URL.',
-              'warn',
-            );
-          }
-          return;
-        }
-
-        if (terminal.has(status.status)) {
-          clearTimeout(pollTimer);
-          log(
-            `Terminal status: ${status.status}`,
-            status.status === 'BLOCKED' ? 'bad' : 'warn',
-          );
-          return;
-        }
-
-        pollTimer = setTimeout(poll, 5000);
-      }
-
-      $('start').onclick = async () => {
         try {
-          if (!file) throw new Error('Select a file first');
+          setStep('upload', 'active', 'Requesting an upload link…');
+          const presigned = await requestUploadUrl();
+          if (state.run !== run) return;
+          run.imageId = presigned.imageId;
+          $('imageIdValue').textContent = presigned.imageId;
+          log(`Upload link created for image ${presigned.imageId}.`);
+          const days = presigned.objectRetentionDays;
+          if (days)
+            $('retentionNote').textContent =
+              `Uploaded and processed files are deleted automatically after ${days} day${days === 1 ? '' : 's'}. Don’t upload anything sensitive.`;
 
-          setStatus('Requesting presigned URL');
-          log('Requesting presigned URL.');
-
-          const body = JSON.stringify({
-            filename: file.name,
-            contentType: file.type,
-          });
-          const presigned = await fetch($('endpoint').value.trim(), {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body,
-          }).then((response) => response.json());
-
-          window.imageId = presigned.imageId;
-          $('imageId').textContent = presigned.imageId;
-          setStatus('PRESIGNED');
-          timeline('PRESIGNED');
-          log('Presigned URL created.', 'ok');
-
-          await xhrUpload(presigned.uploadUrl);
-          setStatus('UPLOADED');
-          timeline('UPLOADED');
-          log('Upload completed.', 'ok');
-
-          poll();
+          await uploadFile(run, presigned);
+          if (state.run !== run) return;
+          document.querySelector('[data-step="upload"] .progress').hidden =
+            true;
+          setStep('upload', 'done', `Uploaded ${bytes(state.file.size)}`);
+          // From here on the pipeline runs in AWS; leaving only stops watching it.
+          $('startOverRunning').textContent = 'Start over';
+          log('Upload finished; waiting for the malware scan.', 'ok');
+          announce('Upload finished. Scanning for malware.');
+          setStep(
+            'scan',
+            'active',
+            'GuardDuty is scanning the file. This usually takes a few seconds.',
+          );
+          run.uploadedAt = Date.now();
+          pollStatus(run);
         } catch (error) {
-          setStatus('Error');
+          if (state.run !== run) return;
+          setStep('upload', 'failed', error.message);
           log(error.message, 'bad');
-          alert(error.message);
+          finishRun(run);
+          showOutcome({
+            tone: 'danger',
+            title: 'Upload failed',
+            body: error.message,
+          });
+          $('tryAgain').hidden = false;
         }
+      }
+
+      async function pollStatus(run) {
+        if (state.run !== run) return;
+        try {
+          const response = await fetch(statusUrl(run.imageId), {
+            cache: 'no-store',
+          });
+          const status = await response.json().catch(() => ({}));
+          if (!response.ok)
+            throw new Error(
+              status.message || `Status request failed (${response.status})`,
+            );
+          if (state.run !== run) return;
+          run.errors = 0;
+          applyStatus(run, status);
+          if (FINAL.has(status.status)) return complete(run, status);
+        } catch (error) {
+          run.errors += 1;
+          log(`Status check failed: ${error.message}`, 'warn');
+          if (run.errors >= 5) {
+            log('Stopped checking after repeated failures.', 'bad');
+            $('retryButton').hidden = false;
+            return;
+          }
+        }
+        const sinceUpload = Date.now() - run.uploadedAt;
+        run.pollTimer = setTimeout(
+          () => pollStatus(run),
+          sinceUpload < 20_000 ? 1500 : sinceUpload < 60_000 ? 3000 : 5000,
+        );
+      }
+
+      function applyStatus(run, status) {
+        $('raw').textContent = JSON.stringify(status, null, 2);
+        if (status.status !== run.lastStatus) {
+          log(`Status: ${status.status}`);
+          run.lastStatus = status.status;
+        }
+        const steps = stepsFor(status);
+        for (const [name, [stepState, detail]] of Object.entries(steps))
+          setStep(name, stepState, detail);
+        if (
+          !FINAL.has(status.status) &&
+          Date.now() - run.uploadedAt > SLOW_AFTER_MS
+        ) {
+          const active = document.querySelector(
+            '.step[data-state="active"] .step-detail',
+          );
+          if (active)
+            active.textContent +=
+              ' This is taking longer than usual; check the Lambda logs and the AsyncEventDlq queue.';
+        }
+      }
+
+      function complete(run, status) {
+        finishRun(run);
+        const outcome = outcomeFor(status);
+        showOutcome(outcome, status);
+        announce(`${outcome.title}. ${outcome.body}`);
+        log(
+          outcome.title,
+          outcome.tone === 'success'
+            ? 'ok'
+            : outcome.tone === 'danger'
+              ? 'bad'
+              : 'warn',
+        );
+        if (status.status === 'WEBP_CREATED') showResults(status);
+      }
+
+      function finishRun(run) {
+        clearInterval(run.ticker);
+        clearTimeout(run.pollTimer);
+        $('elapsed').textContent =
+          `Finished in ${Math.round((Date.now() - run.startedAt) / 1000)} s`;
+        state.run = null;
+        setRunning(false);
+        $('runActions').hidden = true;
+      }
+
+      function showOutcome(outcome, status) {
+        $('outcome').dataset.tone = outcome.tone;
+        $('outcomeTitle').textContent = outcome.title;
+        $('outcomeBody').textContent = outcome.body;
+        $('downloadWebp').hidden = true;
+        $('openOriginal').hidden = true;
+        $('tryAgain').hidden = true;
+        const original = status?.variants?.original;
+        if (original?.downloadUrl) {
+          $('openOriginal').href = original.downloadUrl;
+          $('openOriginal').hidden = false;
+        }
+        $('outcome').hidden = false;
+        $('outcome').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+
+      async function showResults(status) {
+        const webp = status.variants?.webp;
+        const original = status.variants?.original;
+        if (!webp) return;
+        $('originalPreview').hidden = !state.bitmap;
+        $('originalNoPreview').hidden = Boolean(state.bitmap);
+        if (state.bitmap) drawPreview($('originalPreview'), state.bitmap, 1600);
+        $('originalSize').textContent = bytes(
+          original?.sizeBytes ?? status.sizeBytes,
+        );
+        $('originalFormat').textContent =
+          SUPPORTED[status.safeOriginalContentType] || status.contentType;
+        $('originalDims').textContent = status.sourceWidth
+          ? `${status.sourceWidth} × ${status.sourceHeight} px`
+          : state.dims || '—';
+        $('webpSize').textContent = bytes(webp.sizeBytes);
+        $('webpFormat').textContent = `WebP, quality ${webp.quality}`;
+        $('webpDims').textContent = `${webp.width} × ${webp.height} px`;
+
+        const originalBytes = original?.sizeBytes ?? status.sizeBytes;
+        const ratio = originalBytes ? webp.sizeBytes / originalBytes : 1;
+        $('savingsText').textContent =
+          ratio <= 1
+            ? `The WebP is ${Math.round((1 - ratio) * 100)}% smaller`
+            : `The WebP is ${Math.round((ratio - 1) * 100)}% larger`;
+        $('barWebp').style.width =
+          `${Math.max(2, Math.min(100, ratio * 100))}%`;
+        $('barOriginalLabel').textContent = bytes(originalBytes);
+        $('barWebpLabel').textContent = bytes(webp.sizeBytes);
+
+        const expires = new Date(
+          Date.now() + (status.downloadUrlExpiresSeconds || 900) * 1000,
+        );
+        $('linkExpiry').textContent =
+          `Download links expire at ${expires.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+        // Fetch the WebP so the download keeps a proper file name (the
+        // download attribute is ignored for cross-origin links).
+        const name = `${state.file.name.replace(/\.[^.]+$/, '') || 'image'}.webp`;
+        try {
+          const blob = await fetch(webp.downloadUrl).then((r) => {
+            if (!r.ok) throw new Error(String(r.status));
+            return r.blob();
+          });
+          const url = URL.createObjectURL(blob);
+          $('webpPreview').src = url;
+          $('downloadWebp').href = url;
+          $('downloadWebp').download = name;
+        } catch {
+          $('webpPreview').src = webp.downloadUrl;
+          $('downloadWebp').href = webp.downloadUrl;
+          log(
+            'Could not fetch the WebP directly; the download opens in a new tab instead.',
+            'warn',
+          );
+        }
+        $('downloadWebp').hidden = false;
+        $('resultsCard').hidden = false;
+      }
+
+      function startOver() {
+        if (state.run) {
+          state.run.xhr?.abort();
+          finishRun(state.run);
+        }
+        $('progressCard').hidden = true;
+        $('outcome').hidden = true;
+        $('resultsCard').hidden = true;
+        $('detailsCard').hidden = true;
+        $('detailsCard').open = false;
+        $('uploadCard').hidden = false;
+        clearFile();
+        $('dropzone').focus();
+      }
+
+      $('startButton').onclick = startRun;
+      $('tryAgain').onclick = () => {
+        $('outcome').hidden = true;
+        startRun();
       };
+      $('startOver').onclick = startOver;
+      $('startOverRunning').onclick = startOver;
+      $('retryButton').onclick = () => {
+        const run = state.run;
+        if (!run) return;
+        run.errors = 0;
+        $('retryButton').hidden = true;
+        pollStatus(run);
+      };
+      // The Clipboard API needs HTTPS, and S3 website endpoints only serve HTTP.
+      async function copyText(text) {
+        try {
+          return await navigator.clipboard.writeText(text);
+        } catch {
+          // Missing (HTTP page) or refused (e.g. page not focused): fall back.
+        }
+        const area = Object.assign(document.createElement('textarea'), {
+          value: text,
+        });
+        document.body.append(area);
+        area.select();
+        const copied = document.execCommand('copy');
+        area.remove();
+        if (!copied) throw new Error('Copy failed');
+      }
+      $('copyId').onclick = async () => {
+        try {
+          await copyText($('imageIdValue').textContent);
+          $('copyId').textContent = 'Copied';
+        } catch {
+          $('copyId').textContent = 'Copy failed';
+        }
+        setTimeout(() => ($('copyId').textContent = 'Copy'), 1500);
+      };
+
+      // When the stack hosts this page it writes config.json next to it, naming
+      // the stack's own API. Served any other way, the file simply isn't there.
+      async function readConfiguredEndpoint() {
+        try {
+          const response = await fetch('config.json', { cache: 'no-store' });
+          if (!response.ok) return '';
+          const { uploadUrlEndpoint } = await response.json();
+          return typeof uploadUrlEndpoint === 'string' ? uploadUrlEndpoint : '';
+        } catch {
+          return '';
+        }
+      }
+
+      // ---- Start-up: ?endpoint= wins, then config.json, then the remembered one
+      const initial =
+        new URLSearchParams(location.search).get('endpoint') ||
+        (await readConfiguredEndpoint()) ||
+        readStoredEndpoint();
+      const normalized = initial ? normalizeEndpoint(initial) : {};
+      if (normalized.endpoint) setEndpoint(normalized.endpoint);
+      else showConnect(true);
+      updateStartButton();
     </script>
   </body>
 </html>

@@ -16,7 +16,11 @@ const {
   TABLE_NAME,
   VARIANT_CANDIDATE_QUEUE_URL,
   RESIZE_THRESHOLD_BYTES = '0',
+  ALLOWED_CONTENT_TYPES = 'image/jpeg,image/png,image/webp,image/gif,image/avif,image/tiff',
+  OBJECT_RETENTION_DAYS = '1',
+  OBJECT_RETENTION_SECONDS = '86400',
 } = process.env;
+const allowedContentTypes = new Set(ALLOWED_CONTENT_TYPES.split(','));
 
 function decodeS3Key(key) {
   return decodeURIComponent(String(key || '').replace(/\+/g, ' '));
@@ -25,14 +29,21 @@ function imageIdFromKey(key) {
   const parts = key.split('/');
   return parts[0] === 'uploads' && parts[1] ? parts[1] : key;
 }
+function baseContentType(contentType) {
+  return String(contentType || '')
+    .split(';')[0]
+    .trim()
+    .toLowerCase();
+}
 function toSecurityStatus(scanResult) {
   if (scanResult === 'NO_THREATS_FOUND') return 'CLEAN';
   if (scanResult === 'THREATS_FOUND') return 'MALICIOUS';
   return 'UNVERIFIED';
 }
-function toPipelineStatus(securityStatus, scanStatus) {
+function toPipelineStatus(securityStatus, scanStatus, variantRequired) {
   if (securityStatus === 'MALICIOUS') return 'BLOCKED';
-  if (securityStatus === 'CLEAN') return 'SCANNED';
+  if (securityStatus === 'CLEAN')
+    return variantRequired ? 'SCANNED' : 'NO_VARIANT_REQUIRED';
   if (scanStatus === 'FAILED') return 'SCAN_FAILED';
   if (scanStatus === 'SKIPPED') return 'SCAN_SKIPPED';
   return 'SCAN_UNKNOWN';
@@ -45,7 +56,6 @@ function mergeTags(existingTagSet, nextTags) {
     map.set(key, String(value).slice(0, 256));
   const preferred = [
     'GuardDutyMalwareScanStatus',
-    'upload-status',
     'scan-result',
     'variant-required',
     'size-category',
@@ -53,6 +63,7 @@ function mergeTags(existingTagSet, nextTags) {
     'webp-status',
     'expires-at-epoch',
     'retention-seconds',
+    'retention-days',
   ];
   const result = [];
   for (const key of preferred)
@@ -85,14 +96,82 @@ export async function handler(event) {
   const sizeBytes = Number(head.ContentLength || 0);
   const contentType = head.ContentType || 'application/octet-stream';
   const securityStatus = toSecurityStatus(scanResult);
-  const sizeCategory =
-    sizeBytes >= Number(RESIZE_THRESHOLD_BYTES) ? 'LARGE' : 'SMALL';
+  const meetsSizeThreshold = sizeBytes >= Number(RESIZE_THRESHOLD_BYTES);
+  const supportedContentType = allowedContentTypes.has(
+    baseContentType(contentType),
+  );
+  const sizeCategory = meetsSizeThreshold ? 'LARGE' : 'SMALL';
   const variantRequired =
-    securityStatus === 'CLEAN' &&
-    sizeBytes >= Number(RESIZE_THRESHOLD_BYTES) &&
-    contentType.startsWith('image/');
-  const pipelineStatus = toPipelineStatus(securityStatus, scanStatus);
+    securityStatus === 'CLEAN' && meetsSizeThreshold && supportedContentType;
+  let variantSkipReason = null;
+  if (securityStatus === 'CLEAN' && !variantRequired)
+    variantSkipReason = supportedContentType
+      ? 'BELOW_SIZE_THRESHOLD'
+      : 'UNSUPPORTED_CONTENT_TYPE';
+  const pipelineStatus = toPipelineStatus(
+    securityStatus,
+    scanStatus,
+    variantRequired,
+  );
 
+  // Record the result before tagging, and only while the image has not moved
+  // past scanning. Re-applying the same status keeps Lambda retries working;
+  // anything else is a duplicate or late result (GuardDuty delivers at least
+  // once) and must not roll the status back or queue the image again.
+  try {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: TABLE_NAME,
+        Key: { imageId },
+        UpdateExpression:
+          'SET #status = :status, scanStatus = :scanStatus, scanResult = :scanResult, securityStatus = :securityStatus, sizeBytes = :sizeBytes, sizeCategory = :sizeCategory, variantRequired = :variantRequired, variantSkipReason = :variantSkipReason, contentType = :contentType, threats = :threats, statusReasons = :statusReasons, scannedAt = :scannedAt, updatedAt = :updatedAt, originalBucket = :bucket, originalKey = :key, originalVersionId = if_not_exists(originalVersionId, :versionId)',
+        ConditionExpression:
+          'attribute_not_exists(#status) OR #status IN (:presigned, :uploaded, :status)',
+        ExpressionAttributeNames: { '#status': 'status' },
+        ExpressionAttributeValues: {
+          ':status': pipelineStatus,
+          ':presigned': 'PRESIGNED',
+          ':uploaded': 'UPLOADED',
+          ':scanStatus': scanStatus,
+          ':scanResult': scanResult,
+          ':securityStatus': securityStatus,
+          ':sizeBytes': sizeBytes,
+          ':sizeCategory': sizeCategory,
+          ':variantRequired': variantRequired,
+          ':variantSkipReason': variantSkipReason,
+          ':contentType': contentType,
+          ':threats': scanDetails.threats || null,
+          ':statusReasons': scanDetails.statusReasons || null,
+          ':scannedAt': now,
+          ':updatedAt': now,
+          ':bucket': bucket,
+          ':key': key,
+          ':versionId': versionId || null,
+        },
+      }),
+    );
+  } catch (error) {
+    if (error.name !== 'ConditionalCheckFailedException') throw error;
+    console.warn(
+      'Ignoring scan result; the image already moved past scanning.',
+      {
+        imageId,
+        key,
+        pipelineStatus,
+      },
+    );
+    return;
+  }
+
+  // Tag writes replace the whole tag set. Before conversion only post-scan
+  // writes tags (upload-complete deliberately does not), so this
+  // read-modify-write does not race another pipeline Lambda.
+  const retentionSeconds = Number(OBJECT_RETENTION_SECONDS);
+  const objectCreatedAt = head.LastModified
+    ? new Date(head.LastModified)
+    : new Date();
+  const expiresAtEpoch =
+    Math.floor(objectCreatedAt.getTime() / 1000) + retentionSeconds;
   const existingTags = await s3.send(
     new GetObjectTaggingCommand({ Bucket: bucket, Key: key, ...versionArgs }),
   );
@@ -107,34 +186,10 @@ export async function handler(event) {
           'variant-required': variantRequired ? 'TRUE' : 'FALSE',
           'size-category': sizeCategory,
           'processed-status': pipelineStatus,
+          'expires-at-epoch': String(expiresAtEpoch),
+          'retention-seconds': String(retentionSeconds),
+          'retention-days': String(OBJECT_RETENTION_DAYS),
         }),
-      },
-    }),
-  );
-
-  await ddb.send(
-    new UpdateCommand({
-      TableName: TABLE_NAME,
-      Key: { imageId },
-      UpdateExpression:
-        'SET #status = :status, scanStatus = :scanStatus, scanResult = :scanResult, securityStatus = :securityStatus, sizeBytes = :sizeBytes, sizeCategory = :sizeCategory, variantRequired = :variantRequired, contentType = :contentType, threats = :threats, statusReasons = :statusReasons, scannedAt = :scannedAt, updatedAt = :updatedAt, originalBucket = :bucket, originalKey = :key, originalVersionId = if_not_exists(originalVersionId, :versionId)',
-      ExpressionAttributeNames: { '#status': 'status' },
-      ExpressionAttributeValues: {
-        ':status': pipelineStatus,
-        ':scanStatus': scanStatus,
-        ':scanResult': scanResult,
-        ':securityStatus': securityStatus,
-        ':sizeBytes': sizeBytes,
-        ':sizeCategory': sizeCategory,
-        ':variantRequired': variantRequired,
-        ':contentType': contentType,
-        ':threats': scanDetails.threats || null,
-        ':statusReasons': scanDetails.statusReasons || null,
-        ':scannedAt': now,
-        ':updatedAt': now,
-        ':bucket': bucket,
-        ':key': key,
-        ':versionId': versionId || null,
       },
     }),
   );

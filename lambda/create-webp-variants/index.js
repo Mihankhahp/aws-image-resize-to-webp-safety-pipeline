@@ -18,10 +18,21 @@ const {
   TABLE_NAME,
   WEB_MAX_WIDTH = '1280',
   WEBP_QUALITY = '72',
+  MAX_RECEIVE_COUNT = '3',
   PROCESSED_PREFIX = 'processed/',
   OBJECT_RETENTION_DAYS = '1',
   OBJECT_RETENTION_SECONDS = '86400',
 } = process.env;
+
+// Decoded formats accepted as a safe original, mapped to the Content-Type it is
+// stored and served with. The uploader's claimed Content-Type is never trusted.
+const SAFE_SOURCE_CONTENT_TYPES = {
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  tiff: 'image/tiff',
+};
 
 async function streamToBuffer(stream) {
   if (stream.transformToByteArray)
@@ -76,7 +87,6 @@ function mergeTags(existingTagSet, nextTags) {
     map.set(key, String(value).slice(0, 256));
   const preferred = [
     'GuardDutyMalwareScanStatus',
-    'upload-status',
     'scan-result',
     'variant-required',
     'size-category',
@@ -95,14 +105,59 @@ function mergeTags(existingTagSet, nextTags) {
       result.push({ Key: key, Value: value });
   return result;
 }
+function sourceContentType(metadata) {
+  // The prebuilt sharp binaries decode HEIF only when it is AV1 (AVIF).
+  if (metadata.format === 'heif')
+    return metadata.compression === 'av1' ? 'image/avif' : undefined;
+  return SAFE_SOURCE_CONTENT_TYPES[metadata.format];
+}
+
+// Only an image still waiting for conversion can fail or be skipped; a late or
+// duplicate message must not overwrite a status that already moved on.
+async function recordVariantOutcome(imageId, status, reason) {
+  try {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: TABLE_NAME,
+        Key: { imageId },
+        UpdateExpression:
+          'SET #status = :status, variantStatus = :status, variantFailureReason = :reason, updatedAt = :updatedAt',
+        ConditionExpression: '#status = :scanned',
+        ExpressionAttributeNames: { '#status': 'status' },
+        ExpressionAttributeValues: {
+          ':status': status,
+          ':reason': String(reason).slice(0, 1000),
+          ':scanned': 'SCANNED',
+          ':updatedAt': new Date().toISOString(),
+        },
+      }),
+    );
+  } catch (error) {
+    if (error.name !== 'ConditionalCheckFailedException') throw error;
+  }
+}
+
+async function convertToWebp(originalBuffer) {
+  const image = sharp(originalBuffer, { failOn: 'none' }).rotate();
+  const metadata = await image.metadata();
+  const contentType = sourceContentType(metadata);
+  if (!contentType)
+    throw new Error(`Unsupported image format: ${metadata.format}`);
+  const webpBuffer = await image
+    .resize({ width: Number(WEB_MAX_WIDTH), withoutEnlargement: true })
+    .webp({ quality: Number(WEBP_QUALITY), effort: 4 })
+    .toBuffer();
+  const webpMetadata = await sharp(webpBuffer).metadata();
+  return { metadata, contentType, webpBuffer, webpMetadata };
+}
 
 async function processRecord(record) {
   const message = JSON.parse(record.body || '{}');
   const bucket = message.bucket || ORIGINAL_BUCKET_NAME;
   const key = message.key;
   const versionId = message.versionId || undefined;
-  const imageId = message.imageId || imageIdFromKey(key);
   if (!key) throw new Error('Variant message missing key.');
+  const imageId = message.imageId || imageIdFromKey(key);
   const versionArgs = versionId ? { VersionId: versionId } : {};
 
   const tagResult = await s3.send(
@@ -117,6 +172,11 @@ async function processRecord(record) {
       'Skipping variant creation because tags do not allow processing:',
       { bucket, key, imageId, tags: tagValues },
     );
+    await recordVariantOutcome(
+      imageId,
+      'WEBP_SKIPPED',
+      'Object tags do not mark the upload as clean and variant-required.',
+    );
     return;
   }
 
@@ -124,8 +184,28 @@ async function processRecord(record) {
     new GetObjectCommand({ Bucket: bucket, Key: key, ...versionArgs }),
   );
   const originalBuffer = await streamToBuffer(object.Body);
-  const contentType =
-    object.ContentType || message.contentType || 'application/octet-stream';
+
+  // Decode before writing anything, so an undecodable upload is never stored
+  // as a "safe original". Decoding is deterministic, so retrying cannot help.
+  let converted;
+  try {
+    converted = await convertToWebp(originalBuffer);
+  } catch (error) {
+    console.warn('Cannot convert upload to WebP:', {
+      bucket,
+      key,
+      imageId,
+      error: error.message,
+    });
+    await recordVariantOutcome(
+      imageId,
+      'WEBP_FAILED',
+      `Cannot convert image: ${error.message}`,
+    );
+    return;
+  }
+  const { metadata, contentType, webpBuffer, webpMetadata } = converted;
+
   const { safeOriginalKey, webpKey } = outputKeys(key, imageId);
   const now = new Date();
   const nowIso = now.toISOString();
@@ -156,14 +236,6 @@ async function processRecord(record) {
       }),
     }),
   );
-
-  const image = sharp(originalBuffer, { failOn: 'none' }).rotate();
-  const metadata = await image.metadata();
-  const webpBuffer = await image
-    .resize({ width: Number(WEB_MAX_WIDTH), withoutEnlargement: true })
-    .webp({ quality: Number(WEBP_QUALITY), effort: 4 })
-    .toBuffer();
-  const webpMetadata = await sharp(webpBuffer).metadata();
 
   await s3.send(
     new PutObjectCommand({
@@ -197,37 +269,68 @@ async function processRecord(record) {
     }),
   );
 
-  await ddb.send(
-    new UpdateCommand({
-      TableName: TABLE_NAME,
-      Key: { imageId },
-      UpdateExpression:
-        'SET #status = :status, variantStatus = :variantStatus, safeOriginalBucket = :processedBucket, safeOriginalKey = :safeOriginalKey, safeOriginalSizeBytes = :safeOriginalSizeBytes, webpBucket = :processedBucket, webpKey = :webpKey, webpSizeBytes = :webpSizeBytes, webpWidth = :webpWidth, webpHeight = :webpHeight, webpQuality = :webpQuality, sourceWidth = :sourceWidth, sourceHeight = :sourceHeight, processedAt = :processedAt, updatedAt = :updatedAt, processedLifecycleExpiresAfter = :processedExpiresAt, processedLifecycleExpiresAfterEpoch = :processedExpiresAtEpoch, objectRetentionDays = :retentionDays, objectRetentionSeconds = :retentionSeconds, lifecycleStatus = :lifecycleStatus, retentionStatus = :retentionStatus REMOVE safeOriginalDeletedAt, webpDeletedAt, safeOriginalLifecycleExpiredAt, webpLifecycleExpiredAt, expiredAt',
-      ExpressionAttributeNames: { '#status': 'status' },
-      ExpressionAttributeValues: {
-        ':status': 'WEBP_CREATED',
-        ':variantStatus': 'WEBP_CREATED',
-        ':processedBucket': PROCESSED_BUCKET_NAME,
-        ':safeOriginalKey': safeOriginalKey,
-        ':safeOriginalSizeBytes': originalBuffer.length,
-        ':webpKey': webpKey,
-        ':webpSizeBytes': webpBuffer.length,
-        ':webpWidth': webpMetadata.width || null,
-        ':webpHeight': webpMetadata.height || null,
-        ':webpQuality': Number(WEBP_QUALITY),
-        ':sourceWidth': metadata.width || null,
-        ':sourceHeight': metadata.height || null,
-        ':processedAt': nowIso,
-        ':updatedAt': nowIso,
-        ':processedExpiresAt': expiresAtIso,
-        ':processedExpiresAtEpoch': expiresAtEpoch,
-        ':retentionDays': Number(OBJECT_RETENTION_DAYS),
-        ':retentionSeconds': retentionSeconds,
-        ':lifecycleStatus': 'AWAITING_LIFECYCLE_EXPIRATION',
-        ':retentionStatus': 'ACTIVE',
-      },
-    }),
-  );
+  try {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: TABLE_NAME,
+        Key: { imageId },
+        UpdateExpression:
+          'SET #status = :status, variantStatus = :variantStatus, safeOriginalBucket = :processedBucket, safeOriginalKey = :safeOriginalKey, safeOriginalSizeBytes = :safeOriginalSizeBytes, safeOriginalContentType = :safeOriginalContentType, webpBucket = :processedBucket, webpKey = :webpKey, webpSizeBytes = :webpSizeBytes, webpWidth = :webpWidth, webpHeight = :webpHeight, webpQuality = :webpQuality, sourceWidth = :sourceWidth, sourceHeight = :sourceHeight, processedAt = :processedAt, updatedAt = :updatedAt, processedLifecycleExpiresAfter = :processedExpiresAt, processedLifecycleExpiresAfterEpoch = :processedExpiresAtEpoch, objectRetentionDays = :retentionDays, objectRetentionSeconds = :retentionSeconds, lifecycleStatus = :lifecycleStatus, retentionStatus = :retentionStatus REMOVE safeOriginalDeletedAt, webpDeletedAt, safeOriginalLifecycleExpiredAt, webpLifecycleExpiredAt, expiredAt',
+        // Re-processing a duplicate message is fine; overwriting a status that
+        // moved on (for example after lifecycle expiration) is not.
+        ConditionExpression: '#status IN (:scanned, :status)',
+        ExpressionAttributeNames: { '#status': 'status' },
+        ExpressionAttributeValues: {
+          ':status': 'WEBP_CREATED',
+          ':scanned': 'SCANNED',
+          ':variantStatus': 'WEBP_CREATED',
+          ':processedBucket': PROCESSED_BUCKET_NAME,
+          ':safeOriginalKey': safeOriginalKey,
+          ':safeOriginalSizeBytes': originalBuffer.length,
+          ':safeOriginalContentType': contentType,
+          ':webpKey': webpKey,
+          ':webpSizeBytes': webpBuffer.length,
+          ':webpWidth': webpMetadata.width || null,
+          ':webpHeight': webpMetadata.height || null,
+          ':webpQuality': Number(WEBP_QUALITY),
+          ':sourceWidth': metadata.width || null,
+          ':sourceHeight': metadata.height || null,
+          ':processedAt': nowIso,
+          ':updatedAt': nowIso,
+          ':processedExpiresAt': expiresAtIso,
+          ':processedExpiresAtEpoch': expiresAtEpoch,
+          ':retentionDays': Number(OBJECT_RETENTION_DAYS),
+          ':retentionSeconds': retentionSeconds,
+          ':lifecycleStatus': 'AWAITING_LIFECYCLE_EXPIRATION',
+          ':retentionStatus': 'ACTIVE',
+        },
+      }),
+    );
+  } catch (error) {
+    if (error.name !== 'ConditionalCheckFailedException') throw error;
+    console.warn(
+      'Not recording WebP result; the image is no longer waiting for conversion.',
+      { imageId },
+    );
+  }
+}
+
+// SQS moves the message to the DLQ after this attempt; record that in the
+// status so clients stop waiting.
+async function recordRetriesExhausted(record, error) {
+  try {
+    const message = JSON.parse(record.body || '{}');
+    const imageId =
+      message.imageId || (message.key && imageIdFromKey(message.key));
+    if (imageId)
+      await recordVariantOutcome(
+        imageId,
+        'WEBP_FAILED',
+        `Retries exhausted: ${error.message}`,
+      );
+  } catch (recordError) {
+    console.error('Could not record WEBP_FAILED status:', recordError);
+  }
 }
 
 export async function handler(event) {
@@ -238,6 +341,11 @@ export async function handler(event) {
     } catch (error) {
       console.error('Failed to create WebP variant:', record.messageId, error);
       batchItemFailures.push({ itemIdentifier: record.messageId });
+      const receiveCount = Number(
+        record.attributes?.ApproximateReceiveCount || 0,
+      );
+      if (receiveCount >= Number(MAX_RECEIVE_COUNT))
+        await recordRetriesExhausted(record, error);
     }
   }
   return { batchItemFailures };

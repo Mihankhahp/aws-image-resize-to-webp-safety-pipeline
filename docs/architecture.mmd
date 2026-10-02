@@ -1,35 +1,40 @@
 flowchart LR
   User[User / Browser]
+  TestUi[(Test UI website<br>public S3, optional)]
   API[API Gateway]
-  Presign[Presign Lambda]
-  Original[(Original S3 Bucket\n1-day lifecycle)]
+  Presign[Presign Lambda<br>single-use URL]
+  Original[(Original S3 Bucket<br>PUT needs If-None-Match<br>1-day lifecycle)]
   UploadComplete[Upload Complete Lambda]
   GD[GuardDuty Malware Protection for S3]
   EB[EventBridge]
   PostScan[Post-scan Lambda]
+  AsyncDlq[(Async Event DLQ)]
   CandidateQ[(Variant Candidate SQS)]
   Pipe[EventBridge Pipe Filter]
   VariantQ[(Variant SQS)]
-  Webp[Create WebP Lambda]
-  Processed[(Processed S3 Bucket\n1-day lifecycle)]
+  Webp[Create WebP Lambda<br>decodes first]
+  Processed[(Processed S3 Bucket<br>1-day lifecycle)]
   LifecycleQ[(Lifecycle Expiration SQS)]
   LifecycleStatus[Lifecycle Status Lambda]
-  DDB[(DynamoDB Images Table)]
+  DDB[(DynamoDB Images Table<br>forward-only status)]
   Status[Status Lambda]
 
-  User -->|POST /upload-url| API --> Presign
+  User -.->|"load page + config.json"| TestUi
+  User -->|"POST /upload-url"| API --> Presign
   Presign --> DDB
-  Presign -->|presigned PUT URL| User
-  User -->|PUT image| Original
-  Original -->|Object Created| EB --> UploadComplete --> DDB
-  Original --> GD -->|scan result| EB --> PostScan
-  PostScan --> Original
+  Presign -->|"single-use URL + requiredHeaders"| User
+  User -->|"PUT + If-None-Match"| Original
+  Original -->|"Object Created"| EB --> UploadComplete --> DDB
+  Original --> GD -->|"scan result"| EB --> PostScan
   PostScan --> DDB
+  PostScan --> Original
   PostScan --> CandidateQ
+  UploadComplete -.->|"failed after retries"| AsyncDlq
+  PostScan -.->|"failed after retries"| AsyncDlq
   CandidateQ --> Pipe --> VariantQ --> Webp
   Webp --> Processed
   Webp --> DDB
-  Original -->|Lifecycle Expiration| EB --> LifecycleQ --> LifecycleStatus --> DDB
-  Processed -->|Lifecycle Expiration| EB --> LifecycleQ
-  User -->|GET /images/{imageId}| API --> Status --> DDB
+  Original -->|"Lifecycle Expiration"| EB --> LifecycleQ --> LifecycleStatus --> DDB
+  Processed -->|"Lifecycle Expiration"| EB --> LifecycleQ
+  User -->|"GET /images/{imageId}"| API --> Status --> DDB
   Status --> Processed

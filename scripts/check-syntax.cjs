@@ -4,7 +4,7 @@ const { join, relative } = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const root = process.cwd();
-const includeDirs = ['bin', 'lib', 'lambda', 'scripts'];
+const includeDirs = ['bin', 'lib', 'lambda', 'scripts', 'test', 'docs'];
 const files = [];
 
 function walk(dir) {
