@@ -24,12 +24,12 @@
     "@aws-sdk/client-sqs": "^3.699.0",
     "@aws-sdk/lib-dynamodb": "^3.699.0",
     "@aws-sdk/s3-request-presigner": "^3.699.0",
-    "aws-cdk-lib": "^2.221.0",
+    "aws-cdk-lib": "^2.272.0",
     "constructs": "^10.4.2",
-    "esbuild": "^0.28.0"
+    "esbuild": "^0.28.2"
   },
   "devDependencies": {
-    "aws-cdk": "^2.1029.0",
+    "aws-cdk": "^2.1144.0",
     "aws-icons": "3.3.0",
     "playwright-core": "^1.63.0",
     "prettier": "^3.9.9",
